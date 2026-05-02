@@ -1,0 +1,7 @@
+node_modules/
+uploads/
+.env
+frontend/node_modules/
+frontend/dist/
+__pycache__/
+*.pyc

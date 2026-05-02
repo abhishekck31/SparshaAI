@@ -1,0 +1,845 @@
+import React, { useState, useCallback, useEffect, useRef } from 'react';
+import useWakeWord  from '../hooks/useWakeWord';
+import useVapiVoice from '../hooks/useVapiVoice';
+
+// ── Tokens ────────────────────────────────────────────────────────────────────
+const C = {
+  bg:       '#0c0c1a',
+  surface:  '#11112a',
+  surfaceB: '#18183c',
+  border:   '#252545',
+  accent:   '#d97757',
+  accentLo: '#7a3d28',
+  text:     '#f0e6d0',
+  muted:    '#6a6055',
+  dim:      '#3a3530',
+  green:    '#2ecc71',
+  teal:     '#1abc9c',
+  blue:     '#3498db',
+  red:      '#e74c3c',
+  redDark:  '#6b1010',
+};
+
+const LANGS = [
+  { value: 'en', label: 'English'  },
+  { value: 'hi', label: 'Hindi'    },
+  { value: 'kn', label: 'Kannada'  },
+  { value: 'ta', label: 'Tamil'    },
+  { value: 'te', label: 'Telugu'   },
+  { value: 'mr', label: 'Marathi'  },
+];
+
+// ── CSS ───────────────────────────────────────────────────────────────────────
+const STYLES = `
+  *, *::before, *::after { box-sizing: border-box; }
+
+  /* Orb ring — one animation, different durations per state */
+  @keyframes orbRing {
+    0%   { box-shadow: 0 0 0 0px var(--ring-color); }
+    60%  { box-shadow: 0 0 0 18px transparent;      }
+    100% { box-shadow: 0 0 0 0px transparent;        }
+  }
+
+  /* Waveform bars */
+  @keyframes bar {
+    0%, 100% { transform: scaleY(0.18); opacity: 0.4; }
+    50%       { transform: scaleY(1);   opacity: 1;   }
+  }
+
+  /* Thinking dots */
+  @keyframes dot {
+    0%, 80%, 100% { transform: scale(0.2); opacity: 0;   }
+    40%            { transform: scale(1);   opacity: 0.9; }
+  }
+
+  /* Emergency flash */
+  @keyframes flash {
+    0%, 100% { opacity: 1;   }
+    50%       { opacity: 0.4; }
+  }
+
+  /* Message appear */
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0);   }
+  }
+
+  /* Title shimmer */
+  @keyframes shimmer {
+    0%   { background-position: -300% center; }
+    100% { background-position:  300% center; }
+  }
+
+  /* Heartbeat pulse */
+  @keyframes heartbeat {
+    0%, 100% { transform: scale(1);    }
+    14%       { transform: scale(1.35); }
+    28%       { transform: scale(1);   }
+    42%       { transform: scale(1.35); }
+    70%       { transform: scale(1);   }
+  }
+
+  .bubble { animation: fadeUp 0.2s ease; }
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-thumb { background: #2a2a4a; border-radius: 2px; }
+`;
+
+// ── 7-bar waveform ─────────────────────────────────────────────────────────────
+const BARS = [
+  { h: 14, dur: '0.42s', del: '0.00s' },
+  { h: 26, dur: '0.55s', del: '0.09s' },
+  { h: 40, dur: '0.37s', del: '0.04s' },
+  { h: 52, dur: '0.50s', del: '0.16s' },
+  { h: 40, dur: '0.38s', del: '0.07s' },
+  { h: 26, dur: '0.53s', del: '0.13s' },
+  { h: 14, dur: '0.43s', del: '0.02s' },
+];
+
+function Waveform({ color, volume }) {
+  // volume 0-1, scale each bar height by it (min 20%)
+  const s = 0.2 + volume * 0.8;
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 5, height: 68 }}>
+      {BARS.map((b, i) => (
+        <div key={i} style={{
+          width: 5, height: b.h * s, backgroundColor: color,
+          borderRadius: 3, transformOrigin: 'center',
+          animation: `bar ${b.dur} ease-in-out ${b.del} infinite`,
+        }} />
+      ))}
+    </div>
+  );
+}
+
+function ThinkingDots() {
+  return (
+    <div style={{ display: 'flex', gap: 8, alignItems: 'center', height: 28 }}>
+      {[0, 1, 2].map((i) => (
+        <div key={i} style={{
+          width: 10, height: 10, borderRadius: '50%', backgroundColor: C.blue,
+          animation: `dot 1.2s ease-in-out ${i * 0.2}s infinite`,
+        }} />
+      ))}
+    </div>
+  );
+}
+
+// ── ORB — ONLY reacts to 3 stable states ─────────────────────────────────────
+// callActive, wakeListening, emergency.
+// It does NOT react to aiSpeaking / thinking / volume — those go to waveform.
+// This is what stops the on/off flickering.
+function Orb({ callActive, wakeListening, emergency, onClick }) {
+  // Pick ONE steady state. Priority: emergency > call > wake > idle
+  let ringColor, ringDuration, orbBg, orbBorder, glow, label;
+
+  if (emergency) {
+    ringColor = C.red;   ringDuration = '0.8s';
+    orbBg     = '#1a0505'; orbBorder = C.red;
+    glow      = `0 0 28px ${C.red}66`;
+    label     = 'End Call';
+  } else if (callActive) {
+    ringColor = C.accent; ringDuration = '2s';
+    orbBg     = '#1a1005'; orbBorder = C.accent;
+    glow      = `0 0 24px ${C.accent}44`;
+    label     = 'Tap to end';
+  } else if (wakeListening) {
+    ringColor = C.green;  ringDuration = '3s';
+    orbBg     = '#0a1a0d'; orbBorder = C.green;
+    glow      = `0 0 18px ${C.green}33`;
+    label     = 'Tap to call';
+  } else {
+    ringColor = 'transparent'; ringDuration = '0s';
+    orbBg     = C.surface;     orbBorder = C.border;
+    glow      = 'none';
+    label     = 'Tap to call';
+  }
+
+  const icon = callActive ? '🎙️' : '🎤';
+
+  return (
+    <div
+      onClick={onClick}
+      title={label}
+      style={{
+        '--ring-color': ringColor,
+        width: 130, height: 130, borderRadius: '50%',
+        backgroundColor: orbBg,
+        border: `2.5px solid ${orbBorder}`,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: 48, cursor: 'pointer', userSelect: 'none',
+        // Single animation — only duration changes between states, no restart flicker
+        animation: ringColor !== 'transparent'
+          ? `orbRing ${ringDuration} ease-out infinite`
+          : 'none',
+        boxShadow: glow,
+        // Smooth colour transitions between states
+        transition: 'background-color 0.5s, border-color 0.5s, box-shadow 0.5s',
+      }}
+    >
+      {icon}
+    </div>
+  );
+}
+
+// ── Status text — this can change rapidly, separate from orb ─────────────────
+function Status({ callActive, aiSpeaking, thinking, wakeListening, vapiMissing }) {
+  let text, color;
+
+  if (vapiMissing) {
+    text = 'VAPI key missing — see below'; color = C.red;
+  } else if (aiSpeaking) {
+    text = 'Sparsha is speaking — you can interrupt'; color = C.teal;
+  } else if (thinking) {
+    text = 'Sparsha is thinking…'; color = C.blue;
+  } else if (callActive) {
+    text = 'Ask your question'; color = C.accent;
+  } else if (wakeListening) {
+    text = 'Say "Hey Sparsha" — or tap the orb'; color = C.green;
+  } else {
+    text = 'Tap the orb to begin'; color = C.muted;
+  }
+
+  return (
+    <p style={{
+      margin: 0, fontSize: 14, textAlign: 'center',
+      color, minHeight: 22,
+      transition: 'color 0.3s',
+    }}>
+      {text}
+    </p>
+  );
+}
+
+// ── Chat bubble ───────────────────────────────────────────────────────────────
+function Bubble({ role, text }) {
+  const isUser = role === 'user';
+  return (
+    <div className="bubble" style={{
+      display: 'flex',
+      justifyContent: isUser ? 'flex-end' : 'flex-start',
+      marginBottom: 9,
+    }}>
+      <div style={{
+        maxWidth: '80%', padding: '9px 14px',
+        borderRadius: isUser ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
+        backgroundColor: isUser ? C.surfaceB : C.surface,
+        border: `1px solid ${isUser ? C.accentLo : C.border}`,
+      }}>
+        <div style={{
+          fontSize: 10, fontWeight: 700, letterSpacing: '0.1em',
+          textTransform: 'uppercase', marginBottom: 5,
+          color: isUser ? C.muted : C.accent,
+        }}>
+          {isUser ? 'You' : 'Sparsha'}
+        </div>
+        <p style={{ margin: 0, fontSize: 14, color: C.text, lineHeight: 1.6 }}>
+          {text}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ── Vitals metric tile ────────────────────────────────────────────────────────
+function MetricCard({ label, value, critical, pulsing }) {
+  const color = critical ? C.red : C.green;
+  return (
+    <div style={{
+      backgroundColor: C.bg, borderRadius: 8, padding: '10px 12px',
+      border: `1px solid ${critical ? C.red + '55' : C.border}`,
+    }}>
+      <div style={{
+        fontSize: 10, color: C.muted, textTransform: 'uppercase',
+        letterSpacing: '0.1em', marginBottom: 5,
+      }}>
+        {label}
+      </div>
+      <div style={{ fontSize: 17, fontWeight: 800, color, display: 'flex', alignItems: 'center', gap: 5 }}>
+        {pulsing && (
+          <span style={{ display: 'inline-block', animation: 'heartbeat 1s ease-in-out infinite' }}>
+            ❤️
+          </span>
+        )}
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function VitalsWidget({ data }) {
+  const { room_number, vitals, id } = data;
+  const isCritical = vitals.heart_rate > 110 || vitals.spo2 < 92;
+  const statusColor = isCritical ? C.red : C.green;
+  return (
+    <div className="bubble" style={{
+      padding: 16, borderRadius: 10,
+      backgroundColor: isCritical ? '#1a0808' : '#081a08',
+      border: `1px solid ${statusColor}`,
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+        <div style={{ fontSize: 12, color: C.muted }}>
+          {new Date(parseInt(id)).toLocaleTimeString()}
+        </div>
+        <span style={{
+          fontSize: 10, fontWeight: 800, letterSpacing: '0.08em',
+          color: statusColor, border: `1px solid ${statusColor}`,
+          padding: '2px 8px', borderRadius: 4,
+        }}>
+          {isCritical ? '⚠ CRITICAL' : '✓ STABLE'}
+        </span>
+      </div>
+      <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 12, color: C.text }}>
+        📡 Room {room_number} — Live Vitals
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+        <MetricCard label="Heart Rate"      value={`${vitals.heart_rate} bpm`} critical={vitals.heart_rate > 110} pulsing />
+        <MetricCard label="Blood Pressure"  value={vitals.bp}                  critical={false} />
+        <MetricCard label="SpO₂"            value={`${vitals.spo2}%`}          critical={vitals.spo2 < 92} />
+        <MetricCard label="Temperature"     value={`${vitals.temperature}°F`}  critical={vitals.temperature > 101} />
+      </div>
+    </div>
+  );
+}
+
+// ── EHR dictation note ────────────────────────────────────────────────────────
+function EHRNoteWidget({ item }) {
+  return (
+    <div className="bubble" style={{
+      padding: 16, borderRadius: 10,
+      backgroundColor: '#101827',
+      border: '1px solid #3b82f6',
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+        <div style={{ fontSize: 12, color: C.muted }}>
+          {new Date(parseInt(item.id)).toLocaleTimeString()}
+        </div>
+        <span style={{
+          fontSize: 10, fontWeight: 800, letterSpacing: '0.08em',
+          color: '#3b82f6', border: '1px solid #3b82f6',
+          padding: '2px 8px', borderRadius: 4,
+        }}>
+          ✓ EHR SAVED
+        </span>
+      </div>
+      <div style={{
+        fontSize: 15, fontWeight: 700, marginBottom: 10,
+        color: C.text, display: 'flex', alignItems: 'center', gap: 8,
+      }}>
+        📝 Clinical Note — Room {item.room_number}
+      </div>
+      <div style={{
+        fontSize: 13, color: '#9ca3af', fontStyle: 'italic', lineHeight: 1.75,
+        backgroundColor: '#0d1520', borderRadius: 6, padding: '10px 14px',
+        borderLeft: '3px solid #3b82f6',
+        whiteSpace: 'pre-wrap',
+      }}>
+        {item.note_content}
+      </div>
+    </div>
+  );
+}
+
+// ── Predictive Engine Dashboard ────────────────────────────────────────────────
+function PredictiveEngine({ injectMessage }) {
+  const [patients, setPatients] = useState([
+    { id: 1, ptId: 'PT-9982A', ward: 'Cardiac', room: '101', bed: 'Bed 1', hr: 72, spo2: 98, bpSys: 120, bpDia: 80, rr: 16, temp: 36.6, ecg: 'Normal Sinus', glucose: 110, trend: 'stable', alertSent: false },
+    { id: 2, ptId: 'PT-7731B', ward: 'Cardiac', room: '101', bed: 'Bed 2', hr: 85, spo2: 96, bpSys: 130, bpDia: 85, rr: 18, temp: 37.1, ecg: 'Normal Sinus', glucose: 135, trend: 'stable', alertSent: false },
+    { id: 3, ptId: 'PT-4490C', ward: 'Neuro', room: '205', bed: 'Bed 3', hr: 95, spo2: 94, bpSys: 110, bpDia: 70, rr: 20, temp: 38.2, ecg: 'Mild Arrhythmia', glucose: 140, trend: 'deteriorating', alertSent: false },
+  ]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setPatients(prev => prev.map(p => {
+        if (p.trend === 'deteriorating') {
+          const newHr = p.hr + Math.floor(Math.random() * 5);
+          const newSpo2 = p.spo2 > 80 ? p.spo2 - Math.floor(Math.random() * 2) : p.spo2;
+          const newRr = p.rr + (Math.random() > 0.5 ? 1 : 0);
+          const newEcg = newHr > 120 ? 'ST Elevation' : p.ecg;
+          
+          if (newHr > 130 && newSpo2 < 88 && !p.alertSent) {
+            injectMessage(`System Override: Predictive engine detects critical deterioration for patient ${p.ptId} in ${p.ward} Ward, Room ${p.room}. Heart rate is ${newHr}, S P O 2 is dropping to ${newSpo2}, and ECG shows ${newEcg}. High risk of cardiac arrest in 2 minutes. Please alert the team immediately and ask the user to prepare for intervention.`);
+            return { ...p, hr: newHr, spo2: newSpo2, rr: newRr, ecg: newEcg, alertSent: true };
+          }
+          return { ...p, hr: newHr, spo2: newSpo2, rr: newRr, ecg: newEcg };
+        } else {
+          return {
+            ...p,
+            hr: p.hr + (Math.random() > 0.5 ? 1 : -1),
+            spo2: Math.min(100, Math.max(95, p.spo2 + (Math.random() > 0.5 ? 1 : -1))),
+            glucose: p.glucose + (Math.random() > 0.5 ? 1 : -1),
+          };
+        }
+      }));
+    }, 2500);
+    return () => clearInterval(interval);
+  }, [injectMessage]);
+
+  return (
+    <div style={{ width: 440, backgroundColor: C.surface, borderRadius: 16, padding: 24, border: `1px solid ${C.border}`, flexShrink: 0 }}>
+      <h2 style={{ margin: '0 0 20px', fontSize: 18, color: C.text, letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ fontSize: 22 }}>🧠</span> Predictive IoT Engine
+      </h2>
+      <div style={{ fontSize: 12, color: C.muted, marginBottom: 16, lineHeight: 1.5 }}>
+        Continuously analyzing real-time IoT ward vitals to predict catastrophic events before they occur.
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        {patients.map(p => (
+          <div key={p.id} style={{ 
+            padding: 16, borderRadius: 12, 
+            backgroundColor: p.hr > 120 ? '#2a0a0a' : C.surfaceB,
+            border: `1px solid ${p.hr > 120 ? C.red : C.border}`,
+            transition: 'all 0.5s ease',
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <strong style={{ color: C.text, fontSize: 16, letterSpacing: '0.03em' }}>{p.ptId}</strong>
+                <span style={{ color: C.muted, fontSize: 12 }}>{p.ward} Ward • Rm {p.room} • {p.bed}</span>
+              </div>
+              <span style={{ 
+                fontSize: 10, 
+                fontWeight: 800,
+                color: p.hr > 120 ? '#fff' : C.green, 
+                backgroundColor: p.hr > 120 ? C.red : 'transparent',
+                padding: p.hr > 120 ? '4px 8px' : '0',
+                borderRadius: 4,
+                animation: p.hr > 120 ? 'flash 1s infinite' : 'none' 
+              }}>
+                {p.hr > 120 ? 'CRITICAL RISK DETECTED' : 'STABLE'}
+              </span>
+            </div>
+            
+            {/* Vitals Grid */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, fontSize: 13, fontWeight: 600 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', color: p.hr > 100 ? C.red : C.text }}>
+                <span style={{ fontSize: 10, color: C.muted, textTransform: 'uppercase' }}>Heart Rate</span>
+                <span style={{ fontSize: 18 }}>{p.hr} <span style={{ fontSize: 10, color: p.hr > 100 ? C.red : C.muted }}>bpm</span></span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', color: p.spo2 < 92 ? C.red : C.text }}>
+                <span style={{ fontSize: 10, color: C.muted, textTransform: 'uppercase' }}>SpO2</span>
+                <span style={{ fontSize: 18 }}>{p.spo2} <span style={{ fontSize: 10, color: p.spo2 < 92 ? C.red : C.muted }}>%</span></span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', color: C.text }}>
+                <span style={{ fontSize: 10, color: C.muted, textTransform: 'uppercase' }}>Blood Press</span>
+                <span style={{ fontSize: 16 }}>{p.bpSys}/{p.bpDia}</span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', color: p.rr > 24 ? C.accent : C.text }}>
+                <span style={{ fontSize: 10, color: C.muted, textTransform: 'uppercase' }}>Resp Rate</span>
+                <span style={{ fontSize: 16 }}>{p.rr} <span style={{ fontSize: 10, color: C.muted }}>/min</span></span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', color: p.temp > 38 ? C.accent : C.text }}>
+                <span style={{ fontSize: 10, color: C.muted, textTransform: 'uppercase' }}>Body Temp</span>
+                <span style={{ fontSize: 16 }}>{p.temp.toFixed(1)} <span style={{ fontSize: 10, color: C.muted }}>°C</span></span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', color: C.text }}>
+                <span style={{ fontSize: 10, color: C.muted, textTransform: 'uppercase' }}>Glucose</span>
+                <span style={{ fontSize: 16 }}>{p.glucose} <span style={{ fontSize: 10, color: C.muted }}>mg/dL</span></span>
+              </div>
+            </div>
+
+            {/* ECG Strip Status */}
+            <div style={{ 
+              marginTop: 16, padding: '8px 12px', borderRadius: 8, 
+              backgroundColor: 'rgba(0,0,0,0.2)', border: `1px solid ${p.ecg.includes('ST Elevation') ? C.red : C.border}`,
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+            }}>
+              <span style={{ fontSize: 11, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>ECG Rhythm</span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: p.ecg.includes('ST Elevation') ? C.red : C.teal }}>
+                {p.ecg} {p.ecg.includes('ST Elevation') ? '⚠️' : '〰️'}
+              </span>
+            </div>
+
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Main ──────────────────────────────────────────────────────────────────────
+export default function VoiceInterface() {
+  const [language, setLanguage] = useState('en');
+  const VAPI_KEY    = import.meta.env.VITE_VAPI_PUBLIC_KEY;
+  const vapiMissing = !VAPI_KEY || VAPI_KEY === 'your_vapi_public_key_here';
+
+  const {
+    callActive, aiSpeaking, thinking,
+    volume, messages, activeTranscript, emergency, error,
+    startCall, endCall, dismissEmergency, injectMessage
+  } = useVapiVoice({ publicKey: VAPI_KEY });
+
+  const [alerts, setAlerts] = useState([]);
+  const [vitalsLog, setVitalsLog] = useState([]);
+  const prevAlerts = useRef([]);
+
+  useEffect(() => {
+    const evtSource = new EventSource('/api/alerts/stream');
+    evtSource.onmessage = (e) => {
+      const data = JSON.parse(e.data);
+      setAlerts(prev => [...prev.filter(a => a.type === 'ehr'), ...data]);
+
+      data.forEach(curr => {
+        const prev = prevAlerts.current.find(a => a.id === curr.id);
+        if (prev && prev.status === 'pending' && curr.status === 'acknowledged') {
+          injectMessage(`Alert acknowledged. ${curr.staff_name} has responded: "${curr.response}". Please inform the user right now.`);
+        }
+      });
+      prevAlerts.current = data;
+    };
+    return () => evtSource.close();
+  }, [injectMessage]);
+
+  useEffect(() => {
+    const handler = (e) => setVitalsLog(prev => [e.detail, ...prev].slice(0, 10));
+    window.addEventListener('vitals_fetched', handler);
+    return () => window.removeEventListener('vitals_fetched', handler);
+  }, []);
+
+  useEffect(() => {
+    const handler = (e) => setAlerts(prev => [e.detail, ...prev]);
+    window.addEventListener('ehr_note_saved', handler);
+    return () => window.removeEventListener('ehr_note_saved', handler);
+  }, []);
+
+  const onWakeWord = useCallback(() => startCall(language), [startCall, language]);
+
+  const { wakeListening } = useWakeWord({
+    onDetected: onWakeWord,
+    enabled: !callActive && !vapiMissing,
+    lang: 'en-US',
+  });
+
+  React.useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.code === 'Space' && !['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) {
+        e.preventDefault();
+        if (!callActive && !vapiMissing) {
+          startCall(language);
+        } else if (callActive) {
+          endCall();
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [callActive, vapiMissing, startCall, endCall, language]);
+
+  const waveColor = aiSpeaking ? C.teal : C.accent;
+
+  return (
+    <div style={{
+      minHeight: '100vh', backgroundColor: C.bg,
+      color: C.text, fontFamily: "'Segoe UI', 'Inter', system-ui, sans-serif",
+      padding: '24px 16px 56px',
+      overflowX: 'hidden'
+    }}>
+      <style>{STYLES}</style>
+
+      {/* 3-Column Layout */}
+      <div style={{ display: 'flex', gap: 30, maxWidth: 1400, margin: '0 auto', alignItems: 'flex-start', justifyContent: 'center' }}>
+        
+        {/* Left Column: Predictive Engine */}
+        <PredictiveEngine injectMessage={injectMessage} />
+
+        {/* Middle Column: Voice Agent */}
+        <div style={{ flex: 1, maxWidth: 500, minWidth: 400 }}>
+
+        {/* Emergency banner */}
+        {emergency && (
+          <div style={{
+            backgroundColor: C.redDark, border: `2px solid ${C.red}`,
+            borderRadius: 12, padding: '14px 18px', marginBottom: 20,
+            animation: 'flash 0.9s ease-in-out infinite',
+            display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12,
+          }}>
+            <div>
+              <div style={{ fontWeight: 800, fontSize: 15, color: '#fff', letterSpacing: '0.05em' }}>
+                🚨 EMERGENCY ALERT ACTIVATED
+              </div>
+              <div style={{ fontSize: 12, color: '#ffaaaa', marginTop: 4 }}>
+                Team notification triggered — stay on the line.
+              </div>
+            </div>
+            <button onClick={dismissEmergency} style={{
+              background: 'none', border: `1px solid ${C.red}`,
+              color: '#fff', borderRadius: 6, padding: '5px 11px',
+              cursor: 'pointer', fontSize: 11, fontWeight: 700, flexShrink: 0,
+            }}>
+              Dismiss
+            </button>
+          </div>
+        )}
+
+        {/* Header */}
+        <div style={{ textAlign: 'center', marginBottom: 28 }}>
+          <h1 style={{
+            margin: 0, fontSize: 36, fontWeight: 900, letterSpacing: '0.12em',
+            background: `linear-gradient(90deg, #a04020, ${C.accent}, #f0b090, ${C.accent}, #a04020)`,
+            backgroundSize: '300% auto',
+            WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
+            animation: 'shimmer 4s linear infinite',
+          }}>
+            SPARSHA
+          </h1>
+          <p style={{ margin: '5px 0 0', fontSize: 11, color: C.muted, letterSpacing: '0.14em' }}>
+            AI MEDICAL ASSISTANT · FOR HEALTHCARE PROFESSIONALS
+          </p>
+        </div>
+
+        {/* Orb — stable, no flicker */}
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 22 }}>
+          <Orb
+            callActive={callActive}
+            wakeListening={wakeListening}
+            emergency={emergency}
+            onClick={() => callActive ? endCall() : startCall(language)}
+          />
+        </div>
+
+        {/* Status text — below orb, can change freely */}
+        <div style={{ marginBottom: 20 }}>
+          <Status
+            callActive={callActive} aiSpeaking={aiSpeaking}
+            thinking={thinking} wakeListening={wakeListening}
+            vapiMissing={vapiMissing}
+          />
+        </div>
+
+        {/* Waveform area — all volatile state lives here, NOT in the orb */}
+        <div style={{
+          display: 'flex', justifyContent: 'center', alignItems: 'center',
+          minHeight: 76, marginBottom: 22,
+        }}>
+          {thinking && <ThinkingDots />}
+          {!thinking && callActive && <Waveform color={waveColor} volume={volume} />}
+          {!callActive && wakeListening && (
+            // Idle green bars while waiting for wake word
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              {[9, 16, 9].map((h, i) => (
+                <div key={i} style={{
+                  width: 4, height: h, borderRadius: 3,
+                  backgroundColor: C.green, opacity: 0.35,
+                  animation: `bar ${0.9 + i * 0.2}s ease-in-out ${i * 0.13}s infinite`,
+                }} />
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Language selector — only when not in call */}
+        {!callActive && (
+          <div style={{ textAlign: 'center', marginBottom: 26 }}>
+            <label style={{
+              display: 'block', fontSize: 10, color: C.muted,
+              textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 7,
+            }}>
+              Language
+            </label>
+            <select
+              value={language}
+              onChange={(e) => setLanguage(e.target.value)}
+              style={{
+                backgroundColor: C.surface, color: C.text,
+                border: `1px solid ${C.border}`, borderRadius: 8,
+                padding: '9px 22px', fontSize: 14, cursor: 'pointer', outline: 'none',
+              }}
+            >
+              {LANGS.map((l) => (
+                <option key={l.value} value={l.value}>{l.label}</option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {/* Conversation feed */}
+        {messages.length > 0 && (
+          <div style={{
+            backgroundColor: C.surface, borderRadius: 14,
+            border: `1px solid ${C.border}`,
+            padding: '14px 16px', marginBottom: 16,
+            maxHeight: 300, overflowY: 'auto',
+          }}>
+            <div style={{
+              fontSize: 10, color: C.muted, textTransform: 'uppercase',
+              letterSpacing: '0.12em', marginBottom: 12, fontWeight: 700,
+            }}>
+              Conversation
+            </div>
+            {messages.map((m, i) => <Bubble key={m.ts ?? i} role={m.role} text={m.text} />)}
+          </div>
+        )}
+
+        {/* VAPI key missing */}
+        {vapiMissing && (
+          <div style={{
+            backgroundColor: '#180808', border: `1px solid ${C.red}44`,
+            borderRadius: 10, padding: '12px 16px', marginBottom: 14,
+            fontSize: 13, color: '#ff9090', lineHeight: 1.7,
+          }}>
+            <strong>Setup:</strong> open <code style={{ background: '#2a1010', padding: '1px 5px', borderRadius: 4 }}>frontend/.env</code>,
+            set <code style={{ background: '#2a1010', padding: '1px 5px', borderRadius: 4 }}>VITE_VAPI_PUBLIC_KEY=your_key</code>,
+            then restart <code style={{ background: '#2a1010', padding: '1px 5px', borderRadius: 4 }}>npm run dev</code>.
+          </div>
+        )}
+
+        {/* Runtime error */}
+        {error && !vapiMissing && (
+          <div style={{
+            backgroundColor: '#100808', border: `1px solid ${C.red}33`,
+            borderRadius: 10, padding: '10px 14px', marginBottom: 14,
+            fontSize: 13, color: '#ff8888',
+          }}>
+            ⚠ {error}
+          </div>
+        )}
+
+        {/* End call */}
+        {callActive && (
+          <div style={{ textAlign: 'center', marginBottom: 20 }}>
+            <button onClick={endCall} style={{
+              backgroundColor: C.redDark, color: '#fff',
+              border: `1px solid ${C.red}`, borderRadius: 8,
+              padding: '10px 30px', fontSize: 13, fontWeight: 700,
+              cursor: 'pointer', letterSpacing: '0.05em',
+            }}>
+              End Call
+            </button>
+            <p style={{ margin: '6px 0 0', fontSize: 11, color: C.muted }}>
+              or say <em>"Goodbye Sparsha"</em>
+            </p>
+          </div>
+        )}
+
+        {/* Footer */}
+        <div style={{
+          textAlign: 'center', marginTop: 36, fontSize: 11,
+          color: C.dim, letterSpacing: '0.05em', lineHeight: 1.9,
+        }}>
+          VAPI · Deepgram Nova-2 Medical · GPT-4o-mini · OpenAI Nova<br />
+          Medical use only — not a substitute for clinical judgement
+        </div>
+
+        </div>
+
+      {/* Cinematic Live Subtitles Overlay */}
+      {(activeTranscript || (messages.length > 0 && callActive)) && (
+        <div style={{
+          position: 'fixed',
+          bottom: '60px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          width: '90%',
+          maxWidth: '800px',
+          pointerEvents: 'none',
+          textAlign: 'center',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: '8px',
+          zIndex: 1000,
+        }}>
+          {activeTranscript ? (
+            <div style={{
+              backgroundColor: 'rgba(10, 10, 15, 0.85)',
+              backdropFilter: 'blur(12px)',
+              padding: '16px 36px',
+              borderRadius: '24px',
+              border: `2px solid ${activeTranscript.role === 'user' ? C.accent : C.blue}66`,
+              color: '#fff',
+              fontSize: '28px',
+              fontWeight: 600,
+              lineHeight: 1.4,
+              boxShadow: `0 10px 40px rgba(0,0,0,0.6), 0 0 20px ${activeTranscript.role === 'user' ? C.accent : C.blue}22`,
+            }}>
+              <span style={{ 
+                color: activeTranscript.role === 'user' ? C.accent : C.blue, 
+                fontSize: '12px', 
+                textTransform: 'uppercase', 
+                letterSpacing: '3px', 
+                display: 'block', 
+                marginBottom: '6px',
+                fontWeight: 800
+              }}>
+                {activeTranscript.role === 'user' ? 'You' : 'Sparsha'}
+              </span>
+              {activeTranscript.text}
+              <span style={{ opacity: 0.7, marginLeft: '6px' }}>|</span>
+            </div>
+          ) : (messages.length > 0 && messages[messages.length - 1]) ? (
+            <div style={{
+              backgroundColor: 'rgba(10, 10, 15, 0.6)',
+              backdropFilter: 'blur(5px)',
+              padding: '12px 28px',
+              borderRadius: '20px',
+              border: `1px solid ${C.border}66`,
+              color: '#aaa',
+              fontSize: '20px',
+              fontWeight: 500,
+            }}>
+               {messages[messages.length - 1]?.role === 'user' ? 'You: ' : 'Sparsha: '}
+               {messages[messages.length - 1]?.text || ''}
+            </div>
+          ) : null}
+        </div>
+      )}
+
+        {/* Right Side: Log Book */}
+        <div style={{ width: 400, backgroundColor: C.surface, borderRadius: 16, padding: 24, border: `1px solid ${C.border}` }}>
+          <h2 style={{ margin: '0 0 20px', fontSize: 18, color: C.text, letterSpacing: '0.05em' }}>📋 Action Log Book</h2>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16, maxHeight: 600, overflowY: 'auto' }}>
+            {(() => {
+              // Spread order matters: default 'alert', then ...a so EHR type wins
+              const allLogs = [
+                ...vitalsLog,
+                ...alerts.map(a => ({ type: 'alert', ...a })),
+              ].sort((a, b) => parseInt(b.id) - parseInt(a.id));
+
+              if (allLogs.length === 0) return (
+                <div style={{ color: C.muted, fontSize: 14, fontStyle: 'italic' }}>
+                  No actions yet. Ask Sparsha to check vitals, alert staff, or dictate a note.
+                </div>
+              );
+
+              return allLogs.map(item =>
+                item.type === 'vitals' ? (
+                  <VitalsWidget key={item.id} data={item} />
+                ) : item.type === 'ehr' ? (
+                  <EHRNoteWidget key={item.id} item={item} />
+                ) : (
+                  <div key={item.id} style={{
+                    padding: 16, borderRadius: 10,
+                    backgroundColor: item.status === 'pending' ? '#2a1a1a' : '#1a2a1a',
+                    border: `1px solid ${item.status === 'pending' ? C.red : C.green}`,
+                  }}>
+                    <div style={{ fontSize: 12, color: C.muted, textTransform: 'uppercase', marginBottom: 4 }}>
+                      {new Date(parseInt(item.id)).toLocaleTimeString()}
+                    </div>
+                    <div style={{ fontSize: 16, fontWeight: 'bold', marginBottom: 8, color: C.text }}>
+                      Room {item.room_number}
+                    </div>
+                    <div style={{ fontSize: 14, marginBottom: 4 }}>
+                      <span style={{ color: C.muted }}>Staff:</span> {item.staff_name}
+                    </div>
+                    <div style={{ fontSize: 14, marginBottom: 12 }}>
+                      <span style={{ color: C.muted }}>Reason:</span> {item.reason}
+                    </div>
+                    {item.status === 'pending' ? (
+                      <div style={{ fontSize: 13, color: C.red, fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: C.red, animation: 'flash 1s infinite' }} />
+                        Waiting for acknowledgment...
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: 13, color: C.green, fontWeight: 'bold' }}>
+                        ✅ {item.response}
+                      </div>
+                    )}
+                  </div>
+                )
+              );
+            })()}
+          </div>
+        </div>
+
+      </div>
+    </div>
+  );
+}
