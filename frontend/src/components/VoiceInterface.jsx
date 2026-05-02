@@ -2,22 +2,22 @@ import React, { useState, useCallback, useEffect, useRef } from 'react';
 import useWakeWord  from '../hooks/useWakeWord';
 import useVapiVoice from '../hooks/useVapiVoice';
 
-// ── Tokens ────────────────────────────────────────────────────────────────────
+// ── Design Tokens (Premium Medical Palette) ──────────────────────────────────
 const C = {
-  bg:       '#0c0c1a',
-  surface:  '#11112a',
-  surfaceB: '#18183c',
-  border:   '#252545',
-  accent:   '#d97757',
-  accentLo: '#7a3d28',
-  text:     '#f0e6d0',
-  muted:    '#6a6055',
-  dim:      '#3a3530',
-  green:    '#2ecc71',
-  teal:     '#1abc9c',
-  blue:     '#3498db',
-  red:      '#e74c3c',
-  redDark:  '#6b1010',
+  bg:       '#02040a',       // Deepest space black
+  surface:  '#0d1117',       // GitHub-style dark grey
+  surfaceB: '#161b22',       // Slightly lighter grey for cards
+  border:   '#30363d',       // Subdued border
+  accent:   '#f78166',       // Warm coral/orange (medical urgency)
+  accentLo: '#c4432b',       // Darker coral
+  text:     '#e6edf3',       // Soft white
+  muted:    '#8b949e',       // Muted grey
+  dim:      '#484f58',       // Dimmer grey
+  green:    '#3fb950',       // Health green
+  teal:     '#2f81f7',       // Science blue (Vapi AI)
+  blue:     '#58a6ff',       // Soft blue
+  red:      '#f85149',       // Alert red
+  redDark:  '#8e1519',       // Deep alert red
 };
 
 const LANGS = [
@@ -29,75 +29,82 @@ const LANGS = [
   { value: 'mr', label: 'Marathi'  },
 ];
 
-// ── CSS ───────────────────────────────────────────────────────────────────────
+// ── Premium CSS System ────────────────────────────────────────────────────────
 const STYLES = `
-  *, *::before, *::after { box-sizing: border-box; }
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Outfit:wght@400;600;800&display=swap');
 
-  /* Orb ring — one animation, different durations per state */
+  *, *::before, *::after { box-sizing: border-box; }
+  
+  body {
+    font-family: 'Inter', -apple-system, sans-serif;
+    letter-spacing: -0.011em;
+  }
+
+  /* Smooth Pulse for Vitals */
+  @keyframes softPulse {
+    0% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.05); opacity: 0.8; }
+    100% { transform: scale(1); opacity: 1; }
+  }
+
+  /* Orb ring animation */
   @keyframes orbRing {
-    0%   { box-shadow: 0 0 0 0px var(--ring-color); }
-    60%  { box-shadow: 0 0 0 18px transparent;      }
-    100% { box-shadow: 0 0 0 0px transparent;        }
+    0%   { box-shadow: 0 0 0 0px var(--ring-color); opacity: 0.8; }
+    60%  { box-shadow: 0 0 0 25px transparent;      opacity: 0.2; }
+    100% { box-shadow: 0 0 0 0px transparent;        opacity: 0;   }
   }
 
   /* Waveform bars */
   @keyframes bar {
-    0%, 100% { transform: scaleY(0.18); opacity: 0.4; }
+    0%, 100% { transform: scaleY(0.2); opacity: 0.4; }
     50%       { transform: scaleY(1);   opacity: 1;   }
   }
 
-  /* Thinking dots */
-  @keyframes dot {
-    0%, 80%, 100% { transform: scale(0.2); opacity: 0;   }
-    40%            { transform: scale(1);   opacity: 0.9; }
-  }
-
-  /* Emergency flash */
+  /* Emergency flash with smooth transition */
   @keyframes flash {
-    0%, 100% { opacity: 1;   }
-    50%       { opacity: 0.4; }
+    0%, 100% { background-color: #f85149; opacity: 1; }
+    50%       { background-color: #8e1519; opacity: 0.8; }
   }
 
-  /* Message appear */
-  @keyframes fadeUp {
-    from { opacity: 0; transform: translateY(8px); }
-    to   { opacity: 1; transform: translateY(0);   }
+  /* Glassmorphism utility */
+  .glass {
+    background: rgba(22, 27, 34, 0.7) !important;
+    backdrop-filter: blur(12px) !important;
+    border: 1px solid rgba(240, 246, 252, 0.1) !important;
   }
 
-  /* Title shimmer */
+  /* Modern Scrollbar */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #30363d; border-radius: 10px; }
+  ::-webkit-scrollbar-thumb:hover { background: #484f58; }
+
+  .title-shimmer {
+    background: linear-gradient(90deg, #e6edf3 0%, #58a6ff 50%, #e6edf3 100%);
+    background-size: 200% auto;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: shimmer 4s linear infinite;
+  }
+
   @keyframes shimmer {
-    0%   { background-position: -300% center; }
-    100% { background-position:  300% center; }
+    to { background-position: 200% center; }
   }
-
-  /* Heartbeat pulse */
-  @keyframes heartbeat {
-    0%, 100% { transform: scale(1);    }
-    14%       { transform: scale(1.35); }
-    28%       { transform: scale(1);   }
-    42%       { transform: scale(1.35); }
-    70%       { transform: scale(1);   }
-  }
-
-  .bubble { animation: fadeUp 0.2s ease; }
-  ::-webkit-scrollbar { width: 4px; }
-  ::-webkit-scrollbar-thumb { background: #2a2a4a; border-radius: 2px; }
 `;
 
-// ── 7-bar waveform ─────────────────────────────────────────────────────────────
+// ── Waveform Component ───────────────────────────────────────────────────────
 const BARS = [
-  { h: 14, dur: '0.42s', del: '0.00s' },
-  { h: 26, dur: '0.55s', del: '0.09s' },
-  { h: 40, dur: '0.37s', del: '0.04s' },
-  { h: 52, dur: '0.50s', del: '0.16s' },
-  { h: 40, dur: '0.38s', del: '0.07s' },
-  { h: 26, dur: '0.53s', del: '0.13s' },
-  { h: 14, dur: '0.43s', del: '0.02s' },
+  { h: 18, dur: '0.6s', del: '0.0s' },
+  { h: 32, dur: '0.7s', del: '0.1s' },
+  { h: 48, dur: '0.5s', del: '0.2s' },
+  { h: 60, dur: '0.8s', del: '0.3s' },
+  { h: 48, dur: '0.5s', del: '0.4s' },
+  { h: 32, dur: '0.7s', del: '0.5s' },
+  { h: 18, dur: '0.6s', del: '0.6s' },
 ];
 
 function Waveform({ color, volume }) {
-  // volume 0-1, scale each bar height by it (min 20%)
-  const s = 0.2 + volume * 0.8;
+  const s = 0.3 + volume * 0.7;
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 5, height: 68 }}>
       {BARS.map((b, i) => (
@@ -375,79 +382,82 @@ function PredictiveEngine({ injectMessage }) {
   }, [injectMessage]);
 
   return (
-    <div style={{ width: 440, backgroundColor: C.surface, borderRadius: 16, padding: 24, border: `1px solid ${C.border}`, flexShrink: 0 }}>
-      <h2 style={{ margin: '0 0 20px', fontSize: 18, color: C.text, letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: 8 }}>
-        <span style={{ fontSize: 22 }}>🧠</span> Predictive IoT Engine
+    <div style={{ width: 440, background: 'rgba(13, 17, 23, 0.4)', backdropFilter: 'blur(10px)', borderRadius: 24, padding: 28, border: `1px solid ${C.border}`, flexShrink: 0 }}>
+      <h2 style={{ margin: '0 0 8px', fontSize: 22, color: C.text, fontFamily: "'Outfit', sans-serif", fontWeight: 700, display: 'flex', alignItems: 'center', gap: 10 }}>
+        <span style={{ fontSize: 24 }}>🧠</span> Predictive IoT Engine
       </h2>
-      <div style={{ fontSize: 12, color: C.muted, marginBottom: 16, lineHeight: 1.5 }}>
-        Continuously analyzing real-time IoT ward vitals to predict catastrophic events before they occur.
+      <div style={{ fontSize: 13, color: C.muted, marginBottom: 24, lineHeight: 1.6, fontWeight: 400 }}>
+        Real-time telemetry analysis from ward sensors using proprietary medical AI models.
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
         {patients.map(p => (
-          <div key={p.id} style={{ 
-            padding: 16, borderRadius: 12, 
-            backgroundColor: p.hr > 120 ? '#2a0a0a' : C.surfaceB,
-            border: `1px solid ${p.hr > 120 ? C.red : C.border}`,
-            transition: 'all 0.5s ease',
+          <div key={p.id} className="glass" style={{ 
+            padding: 20, borderRadius: 20, 
+            transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
+            position: 'relative',
+            overflow: 'hidden'
           }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+            {/* Status indicator bar */}
+            <div style={{ 
+              position: 'absolute', top: 0, left: 0, bottom: 0, width: 4, 
+              backgroundColor: p.hr > 120 ? C.red : (p.hr > 100 ? C.accent : C.green),
+              boxShadow: p.hr > 120 ? `0 0 15px ${C.red}` : 'none'
+            }} />
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <strong style={{ color: C.text, fontSize: 16, letterSpacing: '0.03em' }}>{p.ptId}</strong>
-                <span style={{ color: C.muted, fontSize: 12 }}>{p.ward} Ward • Rm {p.room} • {p.bed}</span>
+                <div style={{ color: C.text, fontSize: 15, fontWeight: 700, letterSpacing: '0.02em', fontFamily: "'Outfit', sans-serif" }}>{p.ptId}</div>
+                <div style={{ color: C.muted, fontSize: 11, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{p.ward} • RM {p.room} • {p.bed}</div>
               </div>
-              <span style={{ 
+              <div style={{ 
                 fontSize: 10, 
                 fontWeight: 800,
-                color: p.hr > 120 ? '#fff' : C.green, 
-                backgroundColor: p.hr > 120 ? C.red : 'transparent',
-                padding: p.hr > 120 ? '4px 8px' : '0',
-                borderRadius: 4,
-                animation: p.hr > 120 ? 'flash 1s infinite' : 'none' 
+                color: '#fff', 
+                backgroundColor: p.hr > 120 ? C.red : (p.hr > 100 ? C.accent : 'rgba(63, 185, 80, 0.15)'),
+                color: p.hr > 120 ? '#fff' : (p.hr > 100 ? '#fff' : C.green),
+                padding: '5px 10px',
+                borderRadius: 20,
+                letterSpacing: '0.03em',
+                animation: p.hr > 120 ? 'flash 1s infinite' : 'none',
+                border: `1px solid ${p.hr > 100 ? 'transparent' : 'rgba(63, 185, 80, 0.3)'}`
               }}>
-                {p.hr > 120 ? 'CRITICAL RISK DETECTED' : 'STABLE'}
-              </span>
+                {p.hr > 120 ? 'CRITICAL RISK' : (p.hr > 100 ? 'DETERIORATING' : 'STABLE')}
+              </div>
             </div>
             
-            {/* Vitals Grid */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, fontSize: 13, fontWeight: 600 }}>
-              <div style={{ display: 'flex', flexDirection: 'column', color: p.hr > 100 ? C.red : C.text }}>
-                <span style={{ fontSize: 10, color: C.muted, textTransform: 'uppercase' }}>Heart Rate</span>
-                <span style={{ fontSize: 18 }}>{p.hr} <span style={{ fontSize: 10, color: p.hr > 100 ? C.red : C.muted }}>bpm</span></span>
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', color: p.spo2 < 92 ? C.red : C.text }}>
-                <span style={{ fontSize: 10, color: C.muted, textTransform: 'uppercase' }}>SpO2</span>
-                <span style={{ fontSize: 18 }}>{p.spo2} <span style={{ fontSize: 10, color: p.spo2 < 92 ? C.red : C.muted }}>%</span></span>
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', color: C.text }}>
-                <span style={{ fontSize: 10, color: C.muted, textTransform: 'uppercase' }}>Blood Press</span>
-                <span style={{ fontSize: 16 }}>{p.bpSys}/{p.bpDia}</span>
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', color: p.rr > 24 ? C.accent : C.text }}>
-                <span style={{ fontSize: 10, color: C.muted, textTransform: 'uppercase' }}>Resp Rate</span>
-                <span style={{ fontSize: 16 }}>{p.rr} <span style={{ fontSize: 10, color: C.muted }}>/min</span></span>
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', color: p.temp > 38 ? C.accent : C.text }}>
-                <span style={{ fontSize: 10, color: C.muted, textTransform: 'uppercase' }}>Body Temp</span>
-                <span style={{ fontSize: 16 }}>{p.temp.toFixed(1)} <span style={{ fontSize: 10, color: C.muted }}>°C</span></span>
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', color: C.text }}>
-                <span style={{ fontSize: 10, color: C.muted, textTransform: 'uppercase' }}>Glucose</span>
-                <span style={{ fontSize: 16 }}>{p.glucose} <span style={{ fontSize: 10, color: C.muted }}>mg/dL</span></span>
-              </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 20 }}>
+              {[
+                { label: 'HR', val: p.hr, unit: 'bpm', color: p.hr > 100 ? C.red : C.text, icon: '❤️' },
+                { label: 'SpO2', val: p.spo2, unit: '%', color: p.spo2 < 92 ? C.red : C.text, icon: '🫁' },
+                { label: 'BP', val: `${p.bpSys}/${p.bpDia}`, unit: '', color: C.text, icon: '🩸' },
+                { label: 'RR', val: p.rr, unit: '/m', color: p.rr > 24 ? C.accent : C.text, icon: '🌬️' },
+                { label: 'Temp', val: p.temp.toFixed(1), unit: '°C', color: p.temp > 38 ? C.accent : C.text, icon: '🌡️' },
+                { label: 'Glucose', val: p.glucose, unit: 'mg', color: C.text, icon: '🍬' }
+              ].map(m => (
+                <div key={m.label} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  <div style={{ fontSize: 10, color: C.muted, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
+                    {m.label}
+                  </div>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: m.color, display: 'flex', alignItems: 'baseline', gap: 2 }}>
+                    {m.val}<span style={{ fontSize: 10, opacity: 0.6 }}>{m.unit}</span>
+                  </div>
+                </div>
+              ))}
             </div>
 
-            {/* ECG Strip Status */}
             <div style={{ 
-              marginTop: 16, padding: '8px 12px', borderRadius: 8, 
-              backgroundColor: 'rgba(0,0,0,0.2)', border: `1px solid ${p.ecg.includes('ST Elevation') ? C.red : C.border}`,
+              padding: '10px 14px', borderRadius: 12, 
+              backgroundColor: 'rgba(0,0,0,0.3)', border: `1px solid ${p.ecg.includes('ST Elevation') ? 'rgba(248, 81, 73, 0.3)' : C.border}`,
               display: 'flex', justifyContent: 'space-between', alignItems: 'center'
             }}>
-              <span style={{ fontSize: 11, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>ECG Rhythm</span>
-              <span style={{ fontSize: 12, fontWeight: 700, color: p.ecg.includes('ST Elevation') ? C.red : C.teal }}>
-                {p.ecg} {p.ecg.includes('ST Elevation') ? '⚠️' : '〰️'}
-              </span>
+              <div style={{ fontSize: 11, color: C.muted, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <div style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: p.ecg.includes('ST Elevation') ? C.red : C.green, animation: 'softPulse 2s infinite' }} />
+                ECG RHYTHM
+              </div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: p.ecg.includes('ST Elevation') ? C.red : C.blue, fontFamily: 'monospace' }}>
+                {p.ecg.toUpperCase()}
+              </div>
             </div>
-
             {/* Download Report Button */}
             <button 
               onClick={() => {
@@ -660,14 +670,39 @@ export default function VoiceInterface() {
   return (
     <div style={{
       minHeight: '100vh', backgroundColor: C.bg,
-      color: C.text, fontFamily: "'Segoe UI', 'Inter', system-ui, sans-serif",
+      color: C.text, fontFamily: "'Inter', 'Outfit', sans-serif",
       padding: '24px 16px 56px',
-      overflowX: 'hidden'
+      overflowX: 'hidden',
+      position: 'relative'
     }}>
       <style>{STYLES}</style>
 
+      {/* Modern IoT Grid Background */}
+      <div style={{
+        position: 'absolute', inset: 0, zIndex: 0, opacity: 0.6, pointerEvents: 'none',
+        backgroundImage: `
+          linear-gradient(to right, ${C.border}66 1px, transparent 1px),
+          linear-gradient(to bottom, ${C.border}66 1px, transparent 1px)
+        `,
+        backgroundSize: '40px 40px',
+      }} />
+
+      {/* AI Core Glow Effect */}
+      <div style={{
+        position: 'absolute', inset: 0, zIndex: 0, pointerEvents: 'none',
+        background: `radial-gradient(circle at 50% 30%, ${C.teal}33 0%, transparent 70%)`,
+      }} />
+
+      {/* Clinical Scanline Effect */}
+      <div style={{
+        position: 'absolute', inset: 0, zIndex: 0, pointerEvents: 'none',
+        background: 'linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.1) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.02), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.02))',
+        backgroundSize: '100% 4px, 3px 100%',
+        opacity: 0.15
+      }} />
+
       {/* 3-Column Layout */}
-      <div style={{ display: 'flex', gap: 30, maxWidth: 1400, margin: '0 auto', alignItems: 'flex-start', justifyContent: 'center' }}>
+      <div style={{ position: 'relative', zIndex: 1, display: 'flex', gap: 30, maxWidth: 1400, margin: '0 auto', alignItems: 'flex-start', justifyContent: 'center' }}>
         
         {/* Left Column: Predictive Engine */}
         <PredictiveEngine injectMessage={injectMessage} />

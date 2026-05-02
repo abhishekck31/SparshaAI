@@ -24,7 +24,10 @@
 *   **Vernacular Interface**: Full conversational support for languages including **Hindi, Kannada, Tamil, Telugu, and Marathi**.
 *   **Cross-Language EHR**: Nurses can dictate in their native tongue while Sparsha automatically translates and standardizes clinical notes into professional English medical terminology for the hospital's EHR.
 
-### 📺 Cinematic UX & Live Transcription
+### 📺 Mission Control UI & Cinematic UX
+*   **Premium Medical Dashboard**: Completely overhauled UI with **glassmorphism**, **Outfit** typography, and a "Mission Control" command center aesthetic.
+*   **Modern IoT Grid Background**: A high-tech, textured background featuring a 40px cyber-grid and a soft AI-core radial glow for immersive depth.
+*   **Clinical Scanline Effect**: Subtle CRT-style scanlines that simulate the look and feel of a high-end hospital vital monitor.
 *   **Netflix-Style Subtitles**: High-visibility, real-time closed captions designed for loud hospital wards.
 *   **Visual Feedback**: Color-coded transcripts (User vs. Sparsha) with frosted-glass aesthetics for premium accessibility.
 
