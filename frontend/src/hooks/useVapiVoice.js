@@ -314,12 +314,30 @@ export default function useVapiVoice({ publicKey }) {
       if (msg.type !== 'transcript') return;
       const text = msg.transcript?.trim() || '';
       const role = msg.role;
-      
+
       if (msg.transcriptType === 'partial') {
         setActiveTranscript({ role, text });
       } else if (msg.transcriptType === 'final') {
         setActiveTranscript(null);
         if (!text) return;
+
+        // ── Adaptive context mode switching ──────────────────────────────────
+        if (role === 'user') {
+          const newMode = detectContextMode(text);
+          if (newMode !== contextModeRef.current) {
+            contextModeRef.current = newMode;
+            setContextMode(newMode);
+            console.log(`[VAPI] context_mode → ${newMode}`);
+            if (vapiRef.current) {
+              vapiRef.current.send({
+                type: 'add-message',
+                message: { role: 'system', content: CONTEXT_MODE_INSTRUCTIONS[newMode] },
+              });
+            }
+            window.dispatchEvent(new CustomEvent('context_mode_changed', { detail: { mode: newMode } }));
+          }
+        }
+
         const isEmerg =
           (role === 'user'      && EMERGENCY_PATTERNS.some((p) => p.test(text))) ||
           (role === 'assistant' && /emergency alert activated/i.test(text));
@@ -510,7 +528,7 @@ HOWEVER, if the user dictates a clinical note, you MUST translate it into highly
 
   return {
     connecting, callActive, aiSpeaking, thinking,
-    volume, messages, activeTranscript, emergency, error,
+    volume, messages, activeTranscript, emergency, contextMode, error,
     startCall, endCall, dismissEmergency, injectMessage
   };
 }

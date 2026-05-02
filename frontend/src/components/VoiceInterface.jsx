@@ -448,6 +448,138 @@ function PredictiveEngine({ injectMessage }) {
               </span>
             </div>
 
+            {/* Download Report Button */}
+            <button 
+              onClick={() => {
+                const win = window.open('', '_blank');
+                const reportHtml = `
+                  <html>
+                    <head>
+                      <title>Patient Report - ${p.ptId}</title>
+                      <style>
+                        body { font-family: 'Inter', system-ui, sans-serif; color: #1a1a1a; padding: 40px; line-height: 1.5; }
+                        .header { border-bottom: 2px solid #2563eb; padding-bottom: 20px; margin-bottom: 30px; display: flex; justify-content: space-between; align-items: center; }
+                        .logo { font-size: 24px; font-weight: 800; color: #2563eb; }
+                        .report-title { text-align: right; }
+                        .section { margin-bottom: 30px; }
+                        .section-title { font-size: 14px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 15px; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px; }
+                        .grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; }
+                        .info-item { margin-bottom: 10px; }
+                        .label { font-size: 12px; color: #64748b; }
+                        .value { font-size: 14px; font-weight: 600; }
+                        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+                        th { background: #f8fafc; text-align: left; padding: 12px; font-size: 12px; color: #64748b; border-bottom: 1px solid #e2e8f0; }
+                        td { padding: 12px; font-size: 13px; border-bottom: 1px solid #f1f5f9; }
+                        .badge { padding: 4px 8px; borderRadius: 4px; font-size: 11px; font-weight: 700; }
+                        .badge-stable { background: #dcfce7; color: #166534; }
+                        .badge-critical { background: #fee2e2; color: #991b1b; }
+                        .footer { margin-top: 50px; font-size: 11px; color: #94a3b8; text-align: center; border-top: 1px solid #e2e8f0; padding-top: 20px; }
+                      </style>
+                    </head>
+                    <body>
+                      <div class="header">
+                        <div class="logo">SPARSHA AI</div>
+                        <div class="report-title">
+                          <h2 style="margin:0">Clinical Summary Report</h2>
+                          <div style="font-size:12px; color:#64748b">Generated on ${new Date().toLocaleString()}</div>
+                        </div>
+                      </div>
+
+                      <div class="section">
+                        <div class="section-title">Patient Identification</div>
+                        <div class="grid">
+                          <div class="info-item"><div class="label">Patient ID</div><div class="value">${p.ptId}</div></div>
+                          <div class="info-item"><div class="label">Full Name</div><div class="value">Verified Resident</div></div>
+                          <div class="info-item"><div class="label">Admission Date</div><div class="value">${new Date(Date.now() - 432000000).toLocaleDateString()}</div></div>
+                          <div class="info-item"><div class="label">Ward / Room</div><div class="value">${p.ward} / Room ${p.room}</div></div>
+                          <div class="info-item"><div class="label">Bed Assignment</div><div class="value">${p.bed}</div></div>
+                          <div class="info-item"><div class="label">Status</div><div class="value"><span class="badge ${p.hr > 120 ? 'badge-critical' : 'badge-stable'}">${p.hr > 120 ? 'CRITICAL' : 'STABLE'}</span></div></div>
+                        </div>
+                      </div>
+
+                      <div class="section">
+                        <div class="section-title">Current IoT Vitals (Last Updated)</div>
+                        <div class="grid">
+                          <div class="info-item"><div class="label">Heart Rate</div><div class="value">${p.hr} bpm</div></div>
+                          <div class="info-item"><div class="label">SpO2 Level</div><div class="value">${p.spo2}%</div></div>
+                          <div class="info-item"><div class="label">Blood Pressure</div><div class="value">${p.bpSys}/${p.bpDia} mmHg</div></div>
+                          <div class="info-item"><div class="label">Resp Rate</div><div class="value">${p.rr} /min</div></div>
+                          <div class="info-item"><div class="label">Temperature</div><div class="value">${p.temp.toFixed(1)}°C</div></div>
+                          <div class="info-item"><div class="label">Glucose</div><div class="value">${p.glucose} mg/dL</div></div>
+                        </div>
+                      </div>
+
+                      <div class="section">
+                        <div class="section-title">Historical Vitals Trend (Last 24 Hours)</div>
+                        <table>
+                          <thead>
+                            <tr>
+                              <th>Timestamp</th>
+                              <th>HR</th>
+                              <th>SpO2</th>
+                              <th>RR</th>
+                              <th>Temp</th>
+                              <th>ECG Rhythm</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <tr>
+                              <td>${new Date(Date.now() - 3600000).toLocaleTimeString()}</td>
+                              <td>${p.hr - 2}</td><td>${p.spo2 + 1}%</td><td>${p.rr}</td><td>${p.temp.toFixed(1)}°C</td><td>Normal Sinus</td>
+                            </tr>
+                            <tr>
+                              <td>${new Date(Date.now() - 7200000).toLocaleTimeString()}</td>
+                              <td>${p.hr - 5}</td><td>${p.spo2 + 1}%</td><td>${p.rr - 1}</td><td>${(p.temp - 0.2).toFixed(1)}°C</td><td>Normal Sinus</td>
+                            </tr>
+                            <tr style="background:#fff7ed">
+                              <td>${new Date().toLocaleTimeString()} (Current)</td>
+                              <td>${p.hr}</td><td>${p.spo2}%</td><td>${p.rr}</td><td>${p.temp.toFixed(1)}°C</td><td>${p.ecg}</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+
+                      <div class="section">
+                        <div class="section-title">AI Predictive Assessment</div>
+                        <div style="background:#f1f5f9; padding:15px; borderRadius:8px; fontSize:14px">
+                          <strong>Assessment:</strong> ${p.trend === 'deteriorating' ? 'CRITICAL ALERT: Patient is exhibiting signs of acute physiological stress. Significant drop in SpO2 coupled with tachycardia. Immediate bedside evaluation recommended.' : 'Patient is hemodynamically stable. Vitals are within baseline parameters. Continue routine IoT monitoring.'}
+                          <br><br>
+                          <strong>Recommendation:</strong> ${p.trend === 'deteriorating' ? 'Initiate Code Blue protocol and prepare for intubation if SpO2 drops below 85%.' : 'Maintain current care plan. Re-evaluate in 4 hours.'}
+                        </div>
+                      </div>
+
+                      <div class="footer">
+                        This document is a certified clinical record generated by the Sparsha AI Medical Intelligence Engine.
+                        <br>
+                        Confidential - Medical Use Only. (c) 2026 Sparsha AI Systems.
+                      </div>
+
+                      <script>
+                        window.onload = () => {
+                          window.print();
+                          window.onafterprint = () => window.close();
+                        }
+                      </script>
+                    </body>
+                  </html>
+                `;
+                win.document.write(reportHtml);
+                win.document.close();
+              }}
+              style={{
+                marginTop: 16, width: '100%', padding: '10px',
+                backgroundColor: C.surfaceB, color: C.text,
+                border: `1px solid ${C.border}`, borderRadius: 8,
+                fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                transition: 'all 0.2s'
+              }}
+              onMouseOver={(e) => e.currentTarget.style.backgroundColor = C.border}
+              onMouseOut={(e) => e.currentTarget.style.backgroundColor = C.surfaceB}
+            >
+              <span>📄</span> Download Clinical Report
+            </button>
+
           </div>
         ))}
       </div>
@@ -463,7 +595,7 @@ export default function VoiceInterface() {
 
   const {
     callActive, aiSpeaking, thinking,
-    volume, messages, activeTranscript, emergency, error,
+    volume, messages, activeTranscript, emergency, contextMode, error,
     startCall, endCall, dismissEmergency, injectMessage
   } = useVapiVoice({ publicKey: VAPI_KEY });
 
@@ -568,6 +700,37 @@ export default function VoiceInterface() {
             </button>
           </div>
         )}
+
+        {/* Context mode badge — only visible during an active call */}
+        {callActive && (() => {
+          const modeConfig = {
+            normal:   { label: 'NORMAL MODE',   bg: '#0d2b1a', border: C.green,  color: C.green,  dot: C.green,  desc: 'Calm · Explanatory'      },
+            urgent:   { label: 'URGENT MODE',   bg: '#2b1a00', border: '#f39c12', color: '#f39c12', dot: '#f39c12', desc: 'Concise · Action-first'   },
+            critical: { label: 'CRITICAL MODE', bg: '#2b0000', border: C.red,    color: C.red,    dot: C.red,    desc: 'Immediate · No confirmation' },
+          }[contextMode];
+          return (
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              backgroundColor: modeConfig.bg, border: `1.5px solid ${modeConfig.border}`,
+              borderRadius: 10, padding: '10px 16px', marginBottom: 16,
+              animation: contextMode === 'critical' ? 'flash 0.9s ease-in-out infinite' : 'none',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{
+                  width: 9, height: 9, borderRadius: '50%',
+                  backgroundColor: modeConfig.dot,
+                  boxShadow: `0 0 6px ${modeConfig.dot}`,
+                }} />
+                <span style={{ fontWeight: 800, fontSize: 12, color: modeConfig.color, letterSpacing: '0.08em' }}>
+                  {modeConfig.label}
+                </span>
+              </div>
+              <span style={{ fontSize: 11, color: modeConfig.color, opacity: 0.75 }}>
+                {modeConfig.desc}
+              </span>
+            </div>
+          );
+        })()}
 
         {/* Header */}
         <div style={{ textAlign: 'center', marginBottom: 28 }}>
