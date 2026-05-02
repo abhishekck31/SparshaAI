@@ -1,1036 +1,267 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import useWakeWord  from '../hooks/useWakeWord';
 import useVapiVoice from '../hooks/useVapiVoice';
+import MacOSDock    from './ui/mac-os-dock';
+import voiceIcon    from '../assets/voice-icon.png';
 
-// ── Design Tokens (Clinical White Palette) ──────────────────────────────────
+// ── Design Tokens ──────────────────────────────────────────────────────────
 const C = {
-  bg:       '#ffffff',       // Pure Clinical White
-  surface:  '#f8fafc',       // Soft off-white
-  surfaceB: '#ffffff',       // White for cards
-  border:   '#e2e8f0',       // Light grey border
-  accent:   '#f78166',       // Warm coral (stays for urgency)
-  accentLo: '#c4432b',       
-  text:     '#1a1a2e',       // Deep Charcoal for readability
-  muted:    '#64748b',       // Muted slate
-  dim:      '#94a3b8',       
-  green:    '#16a34a',       
-  teal:     '#2563eb',       // Deep Science Blue
-  blue:     '#3b82f6',       
-  red:      '#dc2626',       
-  redDark:  '#991b1b',       
+  bg:       '#ffffff',
+  surface:  '#f8fafc',
+  surfaceB: '#ffffff',
+  border:   '#e2e8f0',
+  accent:   '#f78166',
+  accentLo: '#c4432b',
+  text:     '#1a1a2e',
+  muted:    '#64748b',
+  dim:      '#94a3b8',
+  green:    '#16a34a',
+  teal:     '#2563eb',
+  blue:     '#3b82f6',
+  red:      '#dc2626',
+  redDark:  '#991b1b',
 };
 
-const LANGS = [
-  { value: 'en', label: 'English'  },
-  { value: 'hi', label: 'Hindi'    },
-  { value: 'kn', label: 'Kannada'  },
-  { value: 'ta', label: 'Tamil'    },
-  { value: 'te', label: 'Telugu'   },
-  { value: 'mr', label: 'Marathi'  },
-];
-
-// ── Premium CSS System (Light Mode) ──────────────────────────────────────────
 const STYLES = `
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Outfit:wght@400;600;800&display=swap');
-
   *, *::before, *::after { box-sizing: border-box; }
+  body { font-family: 'Inter', sans-serif; background-color: #ffffff; color: #1a1a2e; margin: 0; }
+  @keyframes softPulse { 0% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.05); opacity: 0.8; } 100% { transform: scale(1); opacity: 1; } }
+  @keyframes orbRing { 0% { box-shadow: 0 0 0 0px var(--ring-color); opacity: 0.6; } 60% { box-shadow: 0 0 0 25px transparent; opacity: 0.1; } 100% { box-shadow: 0 0 0 0px transparent; opacity: 0; } }
+  @keyframes bar { 0%, 100% { transform: scaleY(0.2); opacity: 0.6; } 50% { transform: scaleY(1); opacity: 1; } }
+  @keyframes flash { 0%, 100% { background-color: #dc2626; color: #ffffff; } 50% { background-color: #991b1b; color: #ffffff; } }
+  .shadow-card { background: #ffffff !important; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 0 0 1px rgba(0,0,0,0.05) !important; border: none !important; }
+  .title-shimmer { background: linear-gradient(90deg, #1a1a2e 0%, #2563eb 50%, #1a1a2e 100%); background-size: 200% auto; -webkit-background-clip: text; -webkit-text-fill-color: transparent; animation: shimmer 4s linear infinite; }
+  @keyframes shimmer { to { background-position: 200% center; } }
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center; z-index: 3000; animation: fadeIn 0.3s ease; }
+  .modal-content { background: #ffffff; border-radius: 24px; padding: 32px; width: 100%; maxWidth: 500px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25); position: relative; animation: slideUp 0.3s cubic-bezier(0.165, 0.84, 0.44, 1); }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
   
-  body {
-    font-family: 'Inter', -apple-system, sans-serif;
-    letter-spacing: -0.011em;
-    background-color: #ffffff;
-    color: #1a1a2e;
+  .dosage-input {
+    width: 100%; padding: 16px; border-radius: 12px; border: 1px solid #e2e8f0; font-size: 16px; font-weight: 600; outline: none; transition: border-color 0.2s;
   }
-
-  /* Smooth Pulse for Vitals */
-  @keyframes softPulse {
-    0% { transform: scale(1); opacity: 1; }
-    50% { transform: scale(1.05); opacity: 0.8; }
-    100% { transform: scale(1); opacity: 1; }
-  }
-
-  /* Orb ring animation */
-  @keyframes orbRing {
-    0%   { box-shadow: 0 0 0 0px var(--ring-color); opacity: 0.6; }
-    60%  { box-shadow: 0 0 0 25px transparent;      opacity: 0.1; }
-    100% { box-shadow: 0 0 0 0px transparent;        opacity: 0;   }
-  }
-
-  /* Waveform bars */
-  @keyframes bar {
-    0%, 100% { transform: scaleY(0.2); opacity: 0.6; }
-    50%       { transform: scaleY(1);   opacity: 1;   }
-  }
-
-  /* Emergency flash */
-  @keyframes flash {
-    0%, 100% { background-color: #dc2626; color: #ffffff; }
-    50%       { background-color: #991b1b; color: #ffffff; }
-  }
-
-  /* Shadow Card utility */
-  .shadow-card {
-    background: #ffffff !important;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1), 0 0 0 1px rgba(0,0,0,0.05) !important;
-    border: none !important;
-  }
-
-  /* Modern Scrollbar (Light) */
-  ::-webkit-scrollbar { width: 6px; }
-  ::-webkit-scrollbar-track { background: #f1f5f9; }
-  ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
-  ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
-
-  .title-shimmer {
-    background: linear-gradient(90deg, #1a1a2e 0%, #2563eb 50%, #1a1a2e 100%);
-    background-size: 200% auto;
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    animation: shimmer 4s linear infinite;
-  }
-
-  @keyframes shimmer {
-    to { background-position: 200% center; }
-  }
+  .dosage-input:focus { border-color: #2563eb; }
 `;
 
-// ── Waveform Component ───────────────────────────────────────────────────────
-const BARS = [
-  { h: 18, dur: '0.6s', del: '0.0s' },
-  { h: 32, dur: '0.7s', del: '0.1s' },
-  { h: 48, dur: '0.5s', del: '0.2s' },
-  { h: 60, dur: '0.8s', del: '0.3s' },
-  { h: 48, dur: '0.5s', del: '0.4s' },
-  { h: 32, dur: '0.7s', del: '0.5s' },
-  { h: 18, dur: '0.6s', del: '0.6s' },
-];
+// ── Components ─────────────────────────────────────────────────────────────
 
-function Waveform({ color, volume }) {
-  const s = 0.3 + volume * 0.7;
+function Modal({ title, isOpen, onClose, children }) {
+  if (!isOpen) return null;
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 5, height: 68 }}>
-      {BARS.map((b, i) => (
-        <div key={i} style={{
-          width: 5, height: b.h * s, backgroundColor: color,
-          borderRadius: 3, transformOrigin: 'center',
-          animation: `bar ${b.dur} ease-in-out ${b.del} infinite`,
-        }} />
-      ))}
-    </div>
-  );
-}
-
-function ThinkingDots() {
-  return (
-    <div style={{ display: 'flex', gap: 8, alignItems: 'center', height: 28 }}>
-      {[0, 1, 2].map((i) => (
-        <div key={i} style={{
-          width: 10, height: 10, borderRadius: '50%', backgroundColor: C.blue,
-          animation: `dot 1.2s ease-in-out ${i * 0.2}s infinite`,
-        }} />
-      ))}
-    </div>
-  );
-}
-
-// ── ORB — ONLY reacts to 3 stable states ─────────────────────────────────────
-// callActive, wakeListening, emergency.
-// It does NOT react to aiSpeaking / thinking / volume — those go to waveform.
-// This is what stops the on/off flickering.
-function Orb({ callActive, wakeListening, emergency, onClick }) {
-  // Pick ONE steady state. Priority: emergency > call > wake > idle
-  let ringColor, ringDuration, orbBg, orbBorder, glow, label;
-
-  if (emergency) {
-    ringColor = C.red;   ringDuration = '0.8s';
-    orbBg     = '#1a0505'; orbBorder = C.red;
-    glow      = `0 0 28px ${C.red}66`;
-    label     = 'End Call';
-  } else if (callActive) {
-    ringColor = C.accent; ringDuration = '2s';
-    orbBg     = '#1a1005'; orbBorder = C.accent;
-    glow      = `0 0 24px ${C.accent}44`;
-    label     = 'Tap to end';
-  } else if (wakeListening) {
-    ringColor = C.green;  ringDuration = '3s';
-    orbBg     = '#0a1a0d'; orbBorder = C.green;
-    glow      = `0 0 18px ${C.green}33`;
-    label     = 'Tap to call';
-  } else {
-    ringColor = 'transparent'; ringDuration = '0s';
-    orbBg     = C.surface;     orbBorder = C.border;
-    glow      = 'none';
-    label     = 'Tap to call';
-  }
-
-  const icon = callActive ? '🎙️' : '🎤';
-
-  return (
-    <div
-      onClick={onClick}
-      title={label}
-      style={{
-        '--ring-color': ringColor,
-        width: 130, height: 130, borderRadius: '50%',
-        backgroundColor: orbBg,
-        border: `2.5px solid ${orbBorder}`,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontSize: 48, cursor: 'pointer', userSelect: 'none',
-        // Single animation — only duration changes between states, no restart flicker
-        animation: ringColor !== 'transparent'
-          ? `orbRing ${ringDuration} ease-out infinite`
-          : 'none',
-        boxShadow: glow,
-        // Smooth colour transitions between states
-        transition: 'background-color 0.5s, border-color 0.5s, box-shadow 0.5s',
-      }}
-    >
-      {icon}
-    </div>
-  );
-}
-
-// ── Status text — this can change rapidly, separate from orb ─────────────────
-function Status({ callActive, aiSpeaking, thinking, wakeListening, vapiMissing }) {
-  let text, color;
-
-  if (vapiMissing) {
-    text = 'VAPI key missing — see below'; color = C.red;
-  } else if (aiSpeaking) {
-    text = 'Sparsha is speaking — you can interrupt'; color = C.teal;
-  } else if (thinking) {
-    text = 'Sparsha is thinking…'; color = C.blue;
-  } else if (callActive) {
-    text = 'Ask your question'; color = C.accent;
-  } else if (wakeListening) {
-    text = 'Say "Hey Sparsha" — or tap the orb'; color = C.green;
-  } else {
-    text = 'Tap the orb to begin'; color = C.muted;
-  }
-
-  return (
-    <p style={{
-      margin: 0, fontSize: 14, textAlign: 'center',
-      color, minHeight: 22,
-      transition: 'color 0.3s',
-    }}>
-      {text}
-    </p>
-  );
-}
-
-// ── Chat bubble ───────────────────────────────────────────────────────────────
-function Bubble({ role, text }) {
-  const isUser = role === 'user';
-  return (
-    <div className="bubble" style={{
-      display: 'flex',
-      justifyContent: isUser ? 'flex-end' : 'flex-start',
-      marginBottom: 9,
-    }}>
-      <div style={{
-        maxWidth: '80%', padding: '9px 14px',
-        borderRadius: isUser ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
-        backgroundColor: isUser ? C.surfaceB : C.surface,
-        border: `1px solid ${isUser ? C.accentLo : C.border}`,
-      }}>
-        <div style={{
-          fontSize: 10, fontWeight: 700, letterSpacing: '0.1em',
-          textTransform: 'uppercase', marginBottom: 5,
-          color: isUser ? C.muted : C.accent,
-        }}>
-          {isUser ? 'You' : 'Sparsha'}
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content" onClick={e => e.stopPropagation()}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+          <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, fontFamily: "'Outfit', sans-serif" }}>{title}</h2>
+          <button onClick={onClose} style={{ background: '#f1f5f9', border: 'none', borderRadius: '50%', width: 32, height: 32, cursor: 'pointer', fontSize: 18 }}>×</button>
         </div>
-        <p style={{ margin: 0, fontSize: 14, color: C.text, lineHeight: 1.6 }}>
-          {text}
-        </p>
+        {children}
       </div>
     </div>
   );
 }
 
-// ── Vitals metric tile ────────────────────────────────────────────────────────
-function MetricCard({ label, value, critical, pulsing }) {
-  const color = critical ? C.red : C.green;
-  return (
-    <div style={{
-      backgroundColor: C.bg, borderRadius: 8, padding: '10px 12px',
-      border: `1px solid ${critical ? C.red + '55' : C.border}`,
-    }}>
-      <div style={{
-        fontSize: 10, color: C.muted, textTransform: 'uppercase',
-        letterSpacing: '0.1em', marginBottom: 5,
-      }}>
-        {label}
-      </div>
-      <div style={{ fontSize: 17, fontWeight: 800, color, display: 'flex', alignItems: 'center', gap: 5 }}>
-        {pulsing && (
-          <span style={{ display: 'inline-block', animation: 'heartbeat 1s ease-in-out infinite' }}>
-            ❤️
-          </span>
-        )}
-        {value}
-      </div>
-    </div>
-  );
+function Status({ callActive, aiSpeaking, thinking, wakeListening }) {
+  let label = "Ready for Sparsha";
+  let color = C.muted;
+  if (thinking) { label = "AI Thinking..."; color = C.teal; }
+  else if (aiSpeaking) { label = "Sparsha Speaking"; color = C.accent; }
+  else if (callActive) { label = "Listening..."; color = C.green; }
+  else if (wakeListening) { label = "Wake Word Active"; color = C.green; }
+  return <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', gap: 4 }}><div style={{ fontSize: 10, fontWeight: 900, color, letterSpacing: '0.15em', textTransform: 'uppercase' }}>{label}</div></div>;
 }
 
-function VitalsWidget({ data }) {
-  const { room_number, vitals, id } = data;
-  const isCritical = vitals.heart_rate > 110 || vitals.spo2 < 92;
-  const statusColor = isCritical ? C.red : C.green;
-  return (
-    <div className="bubble" style={{
-      padding: 16, borderRadius: 10,
-      backgroundColor: isCritical ? '#1a0808' : '#081a08',
-      border: `1px solid ${statusColor}`,
-    }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-        <div style={{ fontSize: 12, color: C.muted }}>
-          {new Date(parseInt(id)).toLocaleTimeString()}
-        </div>
-        <span style={{
-          fontSize: 10, fontWeight: 800, letterSpacing: '0.08em',
-          color: statusColor, border: `1px solid ${statusColor}`,
-          padding: '2px 8px', borderRadius: 4,
-        }}>
-          {isCritical ? '⚠ CRITICAL' : '✓ STABLE'}
-        </span>
-      </div>
-      <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 12, color: C.text }}>
-        📡 Room {room_number} — Live Vitals
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-        <MetricCard label="Heart Rate"      value={`${vitals.heart_rate} bpm`} critical={vitals.heart_rate > 110} pulsing />
-        <MetricCard label="Blood Pressure"  value={vitals.bp}                  critical={false} />
-        <MetricCard label="SpO₂"            value={`${vitals.spo2}%`}          critical={vitals.spo2 < 92} />
-        <MetricCard label="Temperature"     value={`${vitals.temperature}°F`}  critical={vitals.temperature > 101} />
-      </div>
-    </div>
-  );
-}
+function DosageCalculator({ onAskSparsha }) {
+  const [weight, setWeight] = useState('');
+  const [med, setMed] = useState('epinephrine');
+  const [result, setResult] = useState(null);
 
-// ── EHR dictation note ────────────────────────────────────────────────────────
-function EHRNoteWidget({ item }) {
-  return (
-    <div className="bubble" style={{
-      padding: 16, borderRadius: 10,
-      backgroundColor: '#101827',
-      border: '1px solid #3b82f6',
-    }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-        <div style={{ fontSize: 12, color: C.muted }}>
-          {new Date(parseInt(item.id)).toLocaleTimeString()}
-        </div>
-        <span style={{
-          fontSize: 10, fontWeight: 800, letterSpacing: '0.08em',
-          color: '#3b82f6', border: '1px solid #3b82f6',
-          padding: '2px 8px', borderRadius: 4,
-        }}>
-          ✓ EHR SAVED
-        </span>
-      </div>
-      <div style={{
-        fontSize: 15, fontWeight: 700, marginBottom: 10,
-        color: C.text, display: 'flex', alignItems: 'center', gap: 8,
-      }}>
-        📝 Clinical Note — Room {item.room_number}
-      </div>
-      <div style={{
-        fontSize: 13, color: '#9ca3af', fontStyle: 'italic', lineHeight: 1.75,
-        backgroundColor: '#0d1520', borderRadius: 6, padding: '10px 14px',
-        borderLeft: '3px solid #3b82f6',
-        whiteSpace: 'pre-wrap',
-      }}>
-        {item.note_content}
-      </div>
-    </div>
-  );
-}
-
-// ── Predictive Engine Dashboard ────────────────────────────────────────────────
-function PredictiveEngine({ injectMessage }) {
-  const [patients, setPatients] = useState([
-    { id: 1, ptId: 'PT-9982A', ward: 'Cardiac', room: '101', bed: 'Bed 1', hr: 72, spo2: 98, bpSys: 120, bpDia: 80, rr: 16, temp: 36.6, ecg: 'Normal Sinus', glucose: 110, trend: 'stable', alertSent: false },
-    { id: 2, ptId: 'PT-7731B', ward: 'Cardiac', room: '101', bed: 'Bed 2', hr: 85, spo2: 96, bpSys: 130, bpDia: 85, rr: 18, temp: 37.1, ecg: 'Normal Sinus', glucose: 135, trend: 'stable', alertSent: false },
-    { id: 3, ptId: 'PT-4490C', ward: 'Neuro', room: '205', bed: 'Bed 3', hr: 95, spo2: 94, bpSys: 110, bpDia: 70, rr: 20, temp: 38.2, ecg: 'Mild Arrhythmia', glucose: 140, trend: 'deteriorating', alertSent: false },
-  ]);
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setPatients(prev => prev.map(p => {
-        if (p.trend === 'deteriorating') {
-          const newHr = p.hr + Math.floor(Math.random() * 5);
-          const newSpo2 = p.spo2 > 80 ? p.spo2 - Math.floor(Math.random() * 2) : p.spo2;
-          const newRr = p.rr + (Math.random() > 0.5 ? 1 : 0);
-          const newEcg = newHr > 120 ? 'ST Elevation' : p.ecg;
-          
-          if (newHr > 130 && newSpo2 < 88 && !p.alertSent) {
-            injectMessage(`System Override: Predictive engine detects critical deterioration for patient ${p.ptId} in ${p.ward} Ward, Room ${p.room}. Heart rate is ${newHr}, S P O 2 is dropping to ${newSpo2}, and ECG shows ${newEcg}. High risk of cardiac arrest in 2 minutes. Please alert the team immediately and ask the user to prepare for intervention.`);
-            return { ...p, hr: newHr, spo2: newSpo2, rr: newRr, ecg: newEcg, alertSent: true };
-          }
-          return { ...p, hr: newHr, spo2: newSpo2, rr: newRr, ecg: newEcg };
-        } else {
-          return {
-            ...p,
-            hr: p.hr + (Math.random() > 0.5 ? 1 : -1),
-            spo2: Math.min(100, Math.max(95, p.spo2 + (Math.random() > 0.5 ? 1 : -1))),
-            glucose: p.glucose + (Math.random() > 0.5 ? 1 : -1),
-          };
-        }
-      }));
-    }, 2500);
-    return () => clearInterval(interval);
-  }, [injectMessage]);
+  const calculate = () => {
+    const w = parseFloat(weight);
+    if (!w || w <= 0) return;
+    let dose = 0;
+    let unit = 'mg';
+    if (med === 'epinephrine') {
+       dose = Math.min(w * 0.01, 0.3).toFixed(3);
+       unit = 'mg (IM)';
+    } else if (med === 'paracetamol') {
+       dose = Math.round(w * 15);
+       unit = 'mg (Oral)';
+    } else if (med === 'amoxicillin') {
+       dose = Math.round(w * 30);
+       unit = 'mg (Daily)';
+    }
+    setResult({ dose, unit });
+  };
 
   return (
-    <div style={{ width: 440, background: 'rgba(13, 17, 23, 0.4)', backdropFilter: 'blur(10px)', borderRadius: 24, padding: 28, border: `1px solid ${C.border}`, flexShrink: 0 }}>
-      <h2 style={{ margin: '0 0 8px', fontSize: 22, color: C.text, fontFamily: "'Outfit', sans-serif", fontWeight: 700, display: 'flex', alignItems: 'center', gap: 10 }}>
-        <span style={{ fontSize: 24 }}>🧠</span> Predictive IoT Engine
-      </h2>
-      <div style={{ fontSize: 13, color: C.muted, marginBottom: 24, lineHeight: 1.6, fontWeight: 400 }}>
-        Real-time telemetry analysis from ward sensors using proprietary medical AI models.
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      <div>
+        <label style={{ fontSize: 11, fontWeight: 800, color: C.muted, textTransform: 'uppercase', marginBottom: 8, display: 'block' }}>Patient Weight (kg)</label>
+        <input type="number" value={weight} onChange={e => setWeight(e.target.value)} placeholder="Enter weight..." className="dosage-input" />
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-        {patients.map(p => (
-          <div key={p.id} className="glass" style={{ 
-            padding: 20, borderRadius: 20, 
-            transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
-            position: 'relative',
-            overflow: 'hidden'
-          }}>
-            {/* Status indicator bar */}
-            <div style={{ 
-              position: 'absolute', top: 0, left: 0, bottom: 0, width: 4, 
-              backgroundColor: p.hr > 120 ? C.red : (p.hr > 100 ? C.accent : C.green),
-              boxShadow: p.hr > 120 ? `0 0 15px ${C.red}` : 'none'
-            }} />
-
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <div style={{ color: C.text, fontSize: 15, fontWeight: 700, letterSpacing: '0.02em', fontFamily: "'Outfit', sans-serif" }}>{p.ptId}</div>
-                <div style={{ color: C.muted, fontSize: 11, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{p.ward} • RM {p.room} • {p.bed}</div>
-              </div>
-              <div style={{ 
-                fontSize: 10, 
-                fontWeight: 800,
-                color: '#fff', 
-                backgroundColor: p.hr > 120 ? C.red : (p.hr > 100 ? C.accent : 'rgba(63, 185, 80, 0.15)'),
-                color: p.hr > 120 ? '#fff' : (p.hr > 100 ? '#fff' : C.green),
-                padding: '5px 10px',
-                borderRadius: 20,
-                letterSpacing: '0.03em',
-                animation: p.hr > 120 ? 'flash 1s infinite' : 'none',
-                border: `1px solid ${p.hr > 100 ? 'transparent' : 'rgba(63, 185, 80, 0.3)'}`
-              }}>
-                {p.hr > 120 ? 'CRITICAL RISK' : (p.hr > 100 ? 'DETERIORATING' : 'STABLE')}
-              </div>
-            </div>
-            
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 20 }}>
-              {[
-                { label: 'HR', val: p.hr, unit: 'bpm', color: p.hr > 100 ? C.red : C.text, icon: '❤️' },
-                { label: 'SpO2', val: p.spo2, unit: '%', color: p.spo2 < 92 ? C.red : C.text, icon: '🫁' },
-                { label: 'BP', val: `${p.bpSys}/${p.bpDia}`, unit: '', color: C.text, icon: '🩸' },
-                { label: 'RR', val: p.rr, unit: '/m', color: p.rr > 24 ? C.accent : C.text, icon: '🌬️' },
-                { label: 'Temp', val: p.temp.toFixed(1), unit: '°C', color: p.temp > 38 ? C.accent : C.text, icon: '🌡️' },
-                { label: 'Glucose', val: p.glucose, unit: 'mg', color: C.text, icon: '🍬' }
-              ].map(m => (
-                <div key={m.label} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                  <div style={{ fontSize: 10, color: C.muted, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
-                    {m.label}
-                  </div>
-                  <div style={{ fontSize: 16, fontWeight: 700, color: m.color, display: 'flex', alignItems: 'baseline', gap: 2 }}>
-                    {m.val}<span style={{ fontSize: 10, opacity: 0.6 }}>{m.unit}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div style={{ 
-              padding: '10px 14px', borderRadius: 12, 
-              backgroundColor: 'rgba(0,0,0,0.3)', border: `1px solid ${p.ecg.includes('ST Elevation') ? 'rgba(248, 81, 73, 0.3)' : C.border}`,
-              display: 'flex', justifyContent: 'space-between', alignItems: 'center'
-            }}>
-              <div style={{ fontSize: 11, color: C.muted, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6 }}>
-                <div style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: p.ecg.includes('ST Elevation') ? C.red : C.green, animation: 'softPulse 2s infinite' }} />
-                ECG RHYTHM
-              </div>
-              <div style={{ fontSize: 12, fontWeight: 700, color: p.ecg.includes('ST Elevation') ? C.red : C.blue, fontFamily: 'monospace' }}>
-                {p.ecg.toUpperCase()}
-              </div>
-            </div>
-            {/* Download Report Button */}
-            <button 
-              onClick={() => {
-                const win = window.open('', '_blank');
-                const reportHtml = `
-                  <html>
-                    <head>
-                      <title>Patient Report - ${p.ptId}</title>
-                      <style>
-                        body { font-family: 'Inter', system-ui, sans-serif; color: #1a1a1a; padding: 40px; line-height: 1.5; }
-                        .header { border-bottom: 2px solid #2563eb; padding-bottom: 20px; margin-bottom: 30px; display: flex; justify-content: space-between; align-items: center; }
-                        .logo { font-size: 24px; font-weight: 800; color: #2563eb; }
-                        .report-title { text-align: right; }
-                        .section { margin-bottom: 30px; }
-                        .section-title { font-size: 14px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 15px; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px; }
-                        .grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; }
-                        .info-item { margin-bottom: 10px; }
-                        .label { font-size: 12px; color: #64748b; }
-                        .value { font-size: 14px; font-weight: 600; }
-                        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-                        th { background: #f8fafc; text-align: left; padding: 12px; font-size: 12px; color: #64748b; border-bottom: 1px solid #e2e8f0; }
-                        td { padding: 12px; font-size: 13px; border-bottom: 1px solid #f1f5f9; }
-                        .badge { padding: 4px 8px; borderRadius: 4px; font-size: 11px; font-weight: 700; }
-                        .badge-stable { background: #dcfce7; color: #166534; }
-                        .badge-critical { background: #fee2e2; color: #991b1b; }
-                        .footer { margin-top: 50px; font-size: 11px; color: #94a3b8; text-align: center; border-top: 1px solid #e2e8f0; padding-top: 20px; }
-                      </style>
-                    </head>
-                    <body>
-                      <div class="header">
-                        <div class="logo">SPARSHA AI</div>
-                        <div class="report-title">
-                          <h2 style="margin:0">Clinical Summary Report</h2>
-                          <div style="font-size:12px; color:#64748b">Generated on ${new Date().toLocaleString()}</div>
-                        </div>
-                      </div>
-
-                      <div class="section">
-                        <div class="section-title">Patient Identification</div>
-                        <div class="grid">
-                          <div class="info-item"><div class="label">Patient ID</div><div class="value">${p.ptId}</div></div>
-                          <div class="info-item"><div class="label">Full Name</div><div class="value">Verified Resident</div></div>
-                          <div class="info-item"><div class="label">Admission Date</div><div class="value">${new Date(Date.now() - 432000000).toLocaleDateString()}</div></div>
-                          <div class="info-item"><div class="label">Ward / Room</div><div class="value">${p.ward} / Room ${p.room}</div></div>
-                          <div class="info-item"><div class="label">Bed Assignment</div><div class="value">${p.bed}</div></div>
-                          <div class="info-item"><div class="label">Status</div><div class="value"><span class="badge ${p.hr > 120 ? 'badge-critical' : 'badge-stable'}">${p.hr > 120 ? 'CRITICAL' : 'STABLE'}</span></div></div>
-                        </div>
-                      </div>
-
-                      <div class="section">
-                        <div class="section-title">Current IoT Vitals (Last Updated)</div>
-                        <div class="grid">
-                          <div class="info-item"><div class="label">Heart Rate</div><div class="value">${p.hr} bpm</div></div>
-                          <div class="info-item"><div class="label">SpO2 Level</div><div class="value">${p.spo2}%</div></div>
-                          <div class="info-item"><div class="label">Blood Pressure</div><div class="value">${p.bpSys}/${p.bpDia} mmHg</div></div>
-                          <div class="info-item"><div class="label">Resp Rate</div><div class="value">${p.rr} /min</div></div>
-                          <div class="info-item"><div class="label">Temperature</div><div class="value">${p.temp.toFixed(1)}°C</div></div>
-                          <div class="info-item"><div class="label">Glucose</div><div class="value">${p.glucose} mg/dL</div></div>
-                        </div>
-                      </div>
-
-                      <div class="section">
-                        <div class="section-title">Historical Vitals Trend (Last 24 Hours)</div>
-                        <table>
-                          <thead>
-                            <tr>
-                              <th>Timestamp</th>
-                              <th>HR</th>
-                              <th>SpO2</th>
-                              <th>RR</th>
-                              <th>Temp</th>
-                              <th>ECG Rhythm</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            <tr>
-                              <td>${new Date(Date.now() - 3600000).toLocaleTimeString()}</td>
-                              <td>${p.hr - 2}</td><td>${p.spo2 + 1}%</td><td>${p.rr}</td><td>${p.temp.toFixed(1)}°C</td><td>Normal Sinus</td>
-                            </tr>
-                            <tr>
-                              <td>${new Date(Date.now() - 7200000).toLocaleTimeString()}</td>
-                              <td>${p.hr - 5}</td><td>${p.spo2 + 1}%</td><td>${p.rr - 1}</td><td>${(p.temp - 0.2).toFixed(1)}°C</td><td>Normal Sinus</td>
-                            </tr>
-                            <tr style="background:#fff7ed">
-                              <td>${new Date().toLocaleTimeString()} (Current)</td>
-                              <td>${p.hr}</td><td>${p.spo2}%</td><td>${p.rr}</td><td>${p.temp.toFixed(1)}°C</td><td>${p.ecg}</td>
-                            </tr>
-                          </tbody>
-                        </table>
-                      </div>
-
-                      <div class="section">
-                        <div class="section-title">AI Predictive Assessment</div>
-                        <div style="background:#f1f5f9; padding:15px; borderRadius:8px; fontSize:14px">
-                          <strong>Assessment:</strong> ${p.trend === 'deteriorating' ? 'CRITICAL ALERT: Patient is exhibiting signs of acute physiological stress. Significant drop in SpO2 coupled with tachycardia. Immediate bedside evaluation recommended.' : 'Patient is hemodynamically stable. Vitals are within baseline parameters. Continue routine IoT monitoring.'}
-                          <br><br>
-                          <strong>Recommendation:</strong> ${p.trend === 'deteriorating' ? 'Initiate Code Blue protocol and prepare for intubation if SpO2 drops below 85%.' : 'Maintain current care plan. Re-evaluate in 4 hours.'}
-                        </div>
-                      </div>
-
-                      <div class="footer">
-                        This document is a certified clinical record generated by the Sparsha AI Medical Intelligence Engine.
-                        <br>
-                        Confidential - Medical Use Only. (c) 2026 Sparsha AI Systems.
-                      </div>
-
-                      <script>
-                        window.onload = () => {
-                          window.print();
-                          window.onafterprint = () => window.close();
-                        }
-                      </script>
-                    </body>
-                  </html>
-                `;
-                win.document.write(reportHtml);
-                win.document.close();
-              }}
-              style={{
-                marginTop: 16, width: '100%', padding: '10px',
-                backgroundColor: C.surfaceB, color: C.text,
-                border: `1px solid ${C.border}`, borderRadius: 8,
-                fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                transition: 'all 0.2s'
-              }}
-              onMouseOver={(e) => e.currentTarget.style.backgroundColor = C.border}
-              onMouseOut={(e) => e.currentTarget.style.backgroundColor = C.surfaceB}
-            >
-              <span>📄</span> Download Clinical Report
-            </button>
-
-          </div>
-        ))}
+      <div>
+        <label style={{ fontSize: 11, fontWeight: 800, color: C.muted, textTransform: 'uppercase', marginBottom: 8, display: 'block' }}>Medication</label>
+        <select value={med} onChange={e => setMed(e.target.value)} className="dosage-input">
+          <option value="epinephrine">Epinephrine (0.01 mg/kg)</option>
+          <option value="paracetamol">Paracetamol (15 mg/kg)</option>
+          <option value="amoxicillin">Amoxicillin (30 mg/kg)</option>
+        </select>
       </div>
-    </div>
-  );
-}
-
-// ── Main ──────────────────────────────────────────────────────────────────────
-export default function VoiceInterface() {
-  const [language, setLanguage] = useState('en');
-  const VAPI_KEY    = import.meta.env.VITE_VAPI_PUBLIC_KEY;
-  const vapiMissing = !VAPI_KEY || VAPI_KEY === 'your_vapi_public_key_here';
-
-  const {
-    callActive, aiSpeaking, thinking,
-    volume, messages, activeTranscript, emergency, contextMode, error,
-    startCall, endCall, dismissEmergency, injectMessage
-  } = useVapiVoice({ publicKey: VAPI_KEY });
-
-  const [alerts, setAlerts] = useState([]);
-  const [vitalsLog, setVitalsLog] = useState([]);
-  const prevAlerts = useRef([]);
-
-  useEffect(() => {
-    const evtSource = new EventSource('/api/alerts/stream');
-    evtSource.onmessage = (e) => {
-      const data = JSON.parse(e.data);
-      setAlerts(prev => [...prev.filter(a => a.type === 'ehr'), ...data]);
-
-      data.forEach(curr => {
-        const prev = prevAlerts.current.find(a => a.id === curr.id);
-        if (prev && prev.status === 'pending' && curr.status === 'acknowledged') {
-          injectMessage(`Alert acknowledged. ${curr.staff_name} has responded: "${curr.response}". Please inform the user right now.`);
-        }
-      });
-      prevAlerts.current = data;
-    };
-    return () => evtSource.close();
-  }, [injectMessage]);
-
-  useEffect(() => {
-    const handler = (e) => setVitalsLog(prev => [e.detail, ...prev].slice(0, 10));
-    window.addEventListener('vitals_fetched', handler);
-    return () => window.removeEventListener('vitals_fetched', handler);
-  }, []);
-
-  useEffect(() => {
-    const handler = (e) => setAlerts(prev => [e.detail, ...prev]);
-    window.addEventListener('ehr_note_saved', handler);
-    return () => window.removeEventListener('ehr_note_saved', handler);
-  }, []);
-
-  const onWakeWord = useCallback(() => startCall(language), [startCall, language]);
-
-  const { wakeListening } = useWakeWord({
-    onDetected: onWakeWord,
-    enabled: !callActive && !vapiMissing,
-    lang: 'en-US',
-  });
-
-  React.useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (e.code === 'Space' && !['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) {
-        e.preventDefault();
-        if (!callActive && !vapiMissing) {
-          startCall(language);
-        } else if (callActive) {
-          endCall();
-        }
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [callActive, vapiMissing, startCall, endCall, language]);
-
-  const waveColor = aiSpeaking ? C.teal : C.accent;
-
-  return (
-    <div style={{
-      minHeight: '100vh', backgroundColor: C.bg,
-      color: C.text, fontFamily: "'Inter', 'Outfit', sans-serif",
-      padding: '24px 16px 56px',
-      overflowX: 'hidden',
-      position: 'relative'
-    }}>
-      <style>{STYLES}</style>
-
-      {/* Clean Architectural Grid (White with Black Lines) */}
-      <div style={{
-        position: 'absolute', inset: 0, zIndex: 0, opacity: 1, pointerEvents: 'none',
-        backgroundImage: `
-          linear-gradient(to right, rgba(0,0,0,0.05) 1px, transparent 1px),
-          linear-gradient(to bottom, rgba(0,0,0,0.05) 1px, transparent 1px)
-        `,
-        backgroundSize: '40px 40px',
-      }} />
-
-      {/* Subtle Depth Shadow */}
-      <div style={{
-        position: 'absolute', inset: 0, zIndex: 0, pointerEvents: 'none',
-        background: `radial-gradient(circle at 50% 30%, rgba(37, 99, 235, 0.03) 0%, transparent 70%)`,
-      }} />
-
-      {/* 3-Column Layout */}
-      <div style={{ position: 'relative', zIndex: 1, display: 'flex', gap: 30, maxWidth: 1400, margin: '0 auto', alignItems: 'flex-start', justifyContent: 'center' }}>
-        
-        {/* Left Column: Predictive Engine */}
-        <PredictiveEngine injectMessage={injectMessage} />
-
-        {/* Middle Column: Voice Agent */}
-        <div style={{ flex: 1, maxWidth: 500, minWidth: 400 }}>
-
-        {/* Emergency banner */}
-        {emergency && (
-          <div style={{
-            backgroundColor: C.redDark, border: `2px solid ${C.red}`,
-            borderRadius: 12, padding: '14px 18px', marginBottom: 20,
-            animation: 'flash 0.9s ease-in-out infinite',
-            display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12,
-          }}>
-            <div>
-              <div style={{ fontWeight: 800, fontSize: 15, color: '#fff', letterSpacing: '0.05em' }}>
-                🚨 EMERGENCY ALERT ACTIVATED
-              </div>
-              <div style={{ fontSize: 12, color: '#ffaaaa', marginTop: 4 }}>
-                Team notification triggered — stay on the line.
-              </div>
-            </div>
-            <button onClick={dismissEmergency} style={{
-              background: 'none', border: `1px solid ${C.red}`,
-              color: '#fff', borderRadius: 6, padding: '5px 11px',
-              cursor: 'pointer', fontSize: 11, fontWeight: 700, flexShrink: 0,
-            }}>
-              Dismiss
-            </button>
-          </div>
-        )}
-
-        {/* Context mode badge — only visible during an active call */}
-        {callActive && (() => {
-          const modeConfig = {
-            normal:   { label: 'NORMAL MODE',   bg: '#0d2b1a', border: C.green,  color: C.green,  dot: C.green,  desc: 'Calm · Explanatory'      },
-            urgent:   { label: 'URGENT MODE',   bg: '#2b1a00', border: '#f39c12', color: '#f39c12', dot: '#f39c12', desc: 'Concise · Action-first'   },
-            critical: { label: 'CRITICAL MODE', bg: '#2b0000', border: C.red,    color: C.red,    dot: C.red,    desc: 'Immediate · No confirmation' },
-          }[contextMode];
-          return (
-            <div style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              backgroundColor: modeConfig.bg, border: `1.5px solid ${modeConfig.border}`,
-              borderRadius: 10, padding: '10px 16px', marginBottom: 16,
-              animation: contextMode === 'critical' ? 'flash 0.9s ease-in-out infinite' : 'none',
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <div style={{
-                  width: 9, height: 9, borderRadius: '50%',
-                  backgroundColor: modeConfig.dot,
-                  boxShadow: `0 0 6px ${modeConfig.dot}`,
-                }} />
-                <span style={{ fontWeight: 800, fontSize: 12, color: modeConfig.color, letterSpacing: '0.08em' }}>
-                  {modeConfig.label}
-                </span>
-              </div>
-              <span style={{ fontSize: 11, color: modeConfig.color, opacity: 0.75 }}>
-                {modeConfig.desc}
-              </span>
-            </div>
-          );
-        })()}
-
-        {/* Header */}
-        <div style={{ textAlign: 'center', marginBottom: 28 }}>
-          <h1 style={{
-            margin: 0, fontSize: 36, fontWeight: 900, letterSpacing: '0.12em',
-            background: `linear-gradient(90deg, #a04020, ${C.accent}, #f0b090, ${C.accent}, #a04020)`,
-            backgroundSize: '300% auto',
-            WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
-            animation: 'shimmer 4s linear infinite',
-          }}>
-            SPARSHA
-          </h1>
-          <p style={{ margin: '5px 0 0', fontSize: 11, color: C.muted, letterSpacing: '0.14em' }}>
-            AI MEDICAL ASSISTANT · FOR HEALTHCARE PROFESSIONALS
-          </p>
-        </div>
-
-        {/* Orb — stable, no flicker */}
-        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 22 }}>
-          <Orb
-            callActive={callActive}
-            wakeListening={wakeListening}
-            emergency={emergency}
-            onClick={() => callActive ? endCall() : startCall(language)}
-          />
-        </div>
-
-        {/* Status text — below orb, can change freely */}
-        <div style={{ marginBottom: 20 }}>
-          <Status
-            callActive={callActive} aiSpeaking={aiSpeaking}
-            thinking={thinking} wakeListening={wakeListening}
-            vapiMissing={vapiMissing}
-          />
-        </div>
-
-        {/* Waveform area — all volatile state lives here, NOT in the orb */}
-        <div style={{
-          display: 'flex', justifyContent: 'center', alignItems: 'center',
-          minHeight: 76, marginBottom: 22,
-        }}>
-          {thinking && <ThinkingDots />}
-          {!thinking && callActive && <Waveform color={waveColor} volume={volume} />}
-          {!callActive && wakeListening && (
-            // Idle green bars while waiting for wake word
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              {[9, 16, 9].map((h, i) => (
-                <div key={i} style={{
-                  width: 4, height: h, borderRadius: 3,
-                  backgroundColor: C.green, opacity: 0.35,
-                  animation: `bar ${0.9 + i * 0.2}s ease-in-out ${i * 0.13}s infinite`,
-                }} />
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Language selector — only when not in call */}
-        {!callActive && (
-          <div style={{ textAlign: 'center', marginBottom: 26 }}>
-            <label style={{
-              display: 'block', fontSize: 10, color: C.muted,
-              textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 7,
-            }}>
-              Language
-            </label>
-            <select
-              value={language}
-              onChange={(e) => setLanguage(e.target.value)}
-              style={{
-                backgroundColor: C.surface, color: C.text,
-                border: `1px solid ${C.border}`, borderRadius: 8,
-                padding: '9px 22px', fontSize: 14, cursor: 'pointer', outline: 'none',
-              }}
-            >
-              {LANGS.map((l) => (
-                <option key={l.value} value={l.value}>{l.label}</option>
-              ))}
-            </select>
-          </div>
-        )}
-
-        {/* Conversation feed */}
-        {messages.length > 0 && (
-          <div style={{
-            backgroundColor: C.surface, borderRadius: 14,
-            border: `1px solid ${C.border}`,
-            padding: '14px 16px', marginBottom: 16,
-            maxHeight: 300, overflowY: 'auto',
-          }}>
-            <div style={{
-              fontSize: 10, color: C.muted, textTransform: 'uppercase',
-              letterSpacing: '0.12em', marginBottom: 12, fontWeight: 700,
-            }}>
-              Conversation
-            </div>
-            {messages.map((m, i) => <Bubble key={m.ts ?? i} role={m.role} text={m.text} />)}
-          </div>
-        )}
-
-        {/* VAPI key missing */}
-        {vapiMissing && (
-          <div style={{
-            backgroundColor: '#180808', border: `1px solid ${C.red}44`,
-            borderRadius: 10, padding: '12px 16px', marginBottom: 14,
-            fontSize: 13, color: '#ff9090', lineHeight: 1.7,
-          }}>
-            <strong>Setup:</strong> open <code style={{ background: '#2a1010', padding: '1px 5px', borderRadius: 4 }}>frontend/.env</code>,
-            set <code style={{ background: '#2a1010', padding: '1px 5px', borderRadius: 4 }}>VITE_VAPI_PUBLIC_KEY=your_key</code>,
-            then restart <code style={{ background: '#2a1010', padding: '1px 5px', borderRadius: 4 }}>npm run dev</code>.
-          </div>
-        )}
-
-        {/* Runtime error */}
-        {error && !vapiMissing && (
-          <div style={{
-            backgroundColor: '#100808', border: `1px solid ${C.red}33`,
-            borderRadius: 10, padding: '10px 14px', marginBottom: 14,
-            fontSize: 13, color: '#ff8888',
-          }}>
-            ⚠ {error}
-          </div>
-        )}
-
-        {/* End call */}
-        {callActive && (
-          <div style={{ textAlign: 'center', marginBottom: 20 }}>
-            <button onClick={endCall} style={{
-              backgroundColor: C.redDark, color: '#fff',
-              border: `1px solid ${C.red}`, borderRadius: 8,
-              padding: '10px 30px', fontSize: 13, fontWeight: 700,
-              cursor: 'pointer', letterSpacing: '0.05em',
-            }}>
-              End Call
-            </button>
-            <p style={{ margin: '6px 0 0', fontSize: 11, color: C.muted }}>
-              or say <em>"Goodbye Sparsha"</em>
-            </p>
-          </div>
-        )}
-
-        {/* Footer */}
-        <div style={{
-          textAlign: 'center', marginTop: 36, fontSize: 11,
-          color: C.dim, letterSpacing: '0.05em', lineHeight: 1.9,
-        }}>
-          VAPI · Deepgram Nova-2 Medical · GPT-4o-mini · OpenAI Nova<br />
-          Medical use only — not a substitute for clinical judgement
-        </div>
-
-        </div>
-
-      {/* Cinematic Live Subtitles Overlay */}
-      {(activeTranscript || (messages.length > 0 && callActive)) && (
-        <div style={{
-          position: 'fixed',
-          bottom: '60px',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          width: '90%',
-          maxWidth: '800px',
-          pointerEvents: 'none',
-          textAlign: 'center',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          gap: '8px',
-          zIndex: 1000,
-        }}>
-          {activeTranscript ? (
-            <div style={{
-              backgroundColor: 'rgba(10, 10, 15, 0.85)',
-              backdropFilter: 'blur(12px)',
-              padding: '16px 36px',
-              borderRadius: '24px',
-              border: `2px solid ${activeTranscript.role === 'user' ? C.accent : C.blue}66`,
-              color: '#fff',
-              fontSize: '28px',
-              fontWeight: 600,
-              lineHeight: 1.4,
-              boxShadow: `0 10px 40px rgba(0,0,0,0.6), 0 0 20px ${activeTranscript.role === 'user' ? C.accent : C.blue}22`,
-            }}>
-              <span style={{ 
-                color: activeTranscript.role === 'user' ? C.accent : C.blue, 
-                fontSize: '12px', 
-                textTransform: 'uppercase', 
-                letterSpacing: '3px', 
-                display: 'block', 
-                marginBottom: '6px',
-                fontWeight: 800
-              }}>
-                {activeTranscript.role === 'user' ? 'You' : 'Sparsha'}
-              </span>
-              {activeTranscript.text}
-              <span style={{ opacity: 0.7, marginLeft: '6px' }}>|</span>
-            </div>
-          ) : (messages.length > 0 && messages[messages.length - 1]) ? (
-            <div style={{
-              backgroundColor: 'rgba(10, 10, 15, 0.6)',
-              backdropFilter: 'blur(5px)',
-              padding: '12px 28px',
-              borderRadius: '20px',
-              border: `1px solid ${C.border}66`,
-              color: '#aaa',
-              fontSize: '20px',
-              fontWeight: 500,
-            }}>
-               {messages[messages.length - 1]?.role === 'user' ? 'You: ' : 'Sparsha: '}
-               {messages[messages.length - 1]?.text || ''}
-            </div>
-          ) : null}
+      
+      <button onClick={calculate} style={{ padding: 16, background: C.text, color: '#fff', border: 'none', borderRadius: 12, fontWeight: 700, cursor: 'pointer' }}>Calculate Safe Dose</button>
+      
+      {result && (
+        <div style={{ padding: 20, backgroundColor: '#f0f9ff', borderRadius: 16, border: `1px solid ${C.blue}`, textAlign: 'center' }}>
+          <div style={{ fontSize: 11, color: C.blue, fontWeight: 800, textTransform: 'uppercase' }}>Recommended Dosage</div>
+          <div style={{ fontSize: 28, fontWeight: 900, color: C.teal, margin: '8px 0' }}>{result.dose} <span style={{ fontSize: 14 }}>{result.unit}</span></div>
+          <div style={{ fontSize: 10, color: C.muted }}>Formula: {med === 'epinephrine' ? '0.01mg/kg' : (med === 'paracetamol' ? '15mg/kg' : '30mg/kg')}</div>
         </div>
       )}
 
-        {/* Right Side: Log Book */}
-        <div style={{ width: 400, backgroundColor: C.surface, borderRadius: 16, padding: 24, border: `1px solid ${C.border}` }}>
-          <h2 style={{ margin: '0 0 20px', fontSize: 18, color: C.text, letterSpacing: '0.05em' }}>📋 Action Log Book</h2>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16, maxHeight: 600, overflowY: 'auto' }}>
-            {(() => {
-              // Spread order matters: default 'alert', then ...a so EHR type wins
-              const allLogs = [
-                ...vitalsLog,
-                ...alerts.map(a => ({ type: 'alert', ...a })),
-              ].sort((a, b) => parseInt(b.id) - parseInt(a.id));
+      <button onClick={onAskSparsha} style={{ padding: 16, background: 'linear-gradient(135deg, #2563eb, #3b82f6)', color: '#fff', border: 'none', borderRadius: 12, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
+        <span>🎙️ Verify with Sparsha AI</span>
+      </button>
+    </div>
+  );
+}
 
-              if (allLogs.length === 0) return (
-                <div style={{ color: C.muted, fontSize: 14, fontStyle: 'italic' }}>
-                  No actions yet. Ask Sparsha to check vitals, alert staff, or dictate a note.
-                </div>
-              );
+// ── Main Dashboard ─────────────────────────────────────────────────────────
 
-              return allLogs.map(item =>
-                item.type === 'vitals' ? (
-                  <VitalsWidget key={item.id} data={item} />
-                ) : item.type === 'ehr' ? (
-                  <EHRNoteWidget key={item.id} item={item} />
-                ) : (
-                  <div key={item.id} style={{
-                    padding: 16, borderRadius: 10,
-                    backgroundColor: item.status === 'pending' ? '#2a1a1a' : '#1a2a1a',
-                    border: `1px solid ${item.status === 'pending' ? C.red : C.green}`,
-                  }}>
-                    <div style={{ fontSize: 12, color: C.muted, textTransform: 'uppercase', marginBottom: 4 }}>
-                      {new Date(parseInt(item.id)).toLocaleTimeString()}
-                    </div>
-                    <div style={{ fontSize: 16, fontWeight: 'bold', marginBottom: 8, color: C.text }}>
-                      Room {item.room_number}
-                    </div>
-                    <div style={{ fontSize: 14, marginBottom: 4 }}>
-                      <span style={{ color: C.muted }}>Staff:</span> {item.staff_name}
-                    </div>
-                    <div style={{ fontSize: 14, marginBottom: 12 }}>
-                      <span style={{ color: C.muted }}>Reason:</span> {item.reason}
-                    </div>
-                    {item.status === 'pending' ? (
-                      <div style={{ fontSize: 13, color: C.red, fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: C.red, animation: 'flash 1s infinite' }} />
-                        Waiting for acknowledgment...
-                      </div>
-                    ) : (
-                      <div style={{ fontSize: 13, color: C.green, fontWeight: 'bold' }}>
-                        ✅ {item.response}
-                      </div>
-                    )}
-                  </div>
-                )
-              );
-            })()}
+export default function VoiceInterface() {
+  const [language, setLanguage] = useState('en');
+  const [vapiPublicKey] = useState(import.meta.env.VITE_VAPI_PUBLIC_KEY || 'your_vapi_public_key_here');
+  
+  const { 
+    callActive, aiSpeaking, thinking, volume, messages, activeTranscript, emergency, contextMode, error,
+    startCall, endCall, dismissEmergency, injectMessage 
+  } = useVapiVoice({ publicKey: vapiPublicKey });
+
+  const { listening: wakeListening } = useWakeWord(() => { if (!callActive) startCall(language); });
+
+  const [activeModal, setActiveModal] = useState(null);
+  const [patients] = useState([
+    { id: 1, ptId: 'PT-9982A', ward: 'Cardiac', room: '101', hr: 72, trend: 'stable' },
+    { id: 2, ptId: 'PT-7731B', ward: 'Cardiac', room: '101', hr: 85, trend: 'stable' },
+    { id: 3, ptId: 'PT-4490C', ward: 'Neuro', room: '205', hr: 110, trend: 'deteriorating' },
+  ]);
+
+  const dockApps = [
+    { id: 'reports', name: 'Clinical Reports', icon: 'https://cdn.jim-nielsen.com/macos/1024/finder-2021-09-10.png?rf=1024' },
+    { id: 'dosage',  name: 'Dosage Lab',      icon: 'https://cdn.jim-nielsen.com/macos/1024/calculator-2021-04-29.png?rf=1024' },
+    { id: 'voice',   name: 'Voice Activation', icon: voiceIcon },
+    { id: 'alerts',  name: 'Manual Alert',    icon: 'https://cdn.jim-nielsen.com/macos/1024/mail-2021-05-25.png?rf=1024' },
+    { id: 'ehr',     name: 'EHR Records',     icon: 'https://cdn.jim-nielsen.com/macos/1024/notes-2021-05-25.png?rf=1024' },
+  ];
+
+  const handleDockClick = (id) => {
+    if (id === 'voice') {
+      if (!callActive) startCall(language);
+      else endCall();
+    } else {
+      setActiveModal(id);
+    }
+  };
+
+  const triggerEmergency = () => {
+    injectMessage("MANUAL SYSTEM OVERRIDE: Clinical team requested via Emergency Dock. Trigger Code Blue immediately.");
+    setActiveModal(null);
+  };
+
+  return (
+    <div style={{ minHeight: '100vh', backgroundColor: C.bg, color: C.text, padding: '24px 16px 120px', position: 'relative' }}>
+      <style>{STYLES}</style>
+      <div style={{ position: 'absolute', inset: 0, zIndex: 0, pointerEvents: 'none', backgroundImage: 'linear-gradient(to right, rgba(0,0,0,0.05) 1px, transparent 1px), linear-gradient(to bottom, rgba(0,0,0,0.05) 1px, transparent 1px)', backgroundSize: '40px 40px' }} />
+
+      <div style={{ position: 'relative', zIndex: 1, display: 'flex', gap: 30, maxWidth: 1400, margin: '0 auto', alignItems: 'flex-start', justifyContent: 'center' }}>
+        
+        {/* Monitoring Dashboard */}
+        <div className="shadow-card" style={{ width: 440, flexShrink: 0, padding: 28, borderRadius: 24 }}>
+          <h2 style={{ margin: '0 0 16px', fontSize: 20, fontWeight: 800, fontFamily: "'Outfit', sans-serif" }}>🧠 Ward Status</h2>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {patients.map(p => (
+              <div key={p.id} style={{ padding: 16, borderRadius: 12, backgroundColor: '#f8fafc', border: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between' }}>
+                <div><div style={{ fontWeight: 700 }}>{p.ptId}</div><div style={{ fontSize: 11, color: C.muted }}>RM {p.room} • {p.ward}</div></div>
+                <div style={{ fontWeight: 800, color: p.hr > 100 ? C.red : C.green }}>{p.hr} bpm</div>
+              </div>
+            ))}
           </div>
         </div>
 
+        {/* Main AI Interaction */}
+        <div style={{ flex: 1, maxWidth: 500 }}>
+          {emergency && (
+            <div style={{ backgroundColor: '#fee2e2', border: `1.5px solid ${C.red}`, borderRadius: 16, padding: '16px 20px', marginBottom: 24, animation: 'flash 0.9s infinite', display: 'flex', justifyContent: 'space-between' }}>
+              <div><div style={{ fontWeight: 800, fontSize: 15, color: C.red }}>🚨 EMERGENCY</div></div>
+              <button onClick={dismissEmergency} style={{ background: C.red, color: '#fff', border: 'none', borderRadius: 8, padding: '6px 14px', cursor: 'pointer' }}>Dismiss</button>
+            </div>
+          )}
+
+          <div style={{ textAlign: 'center', marginBottom: 32 }}>
+            <h1 className="title-shimmer" style={{ margin: 0, fontSize: 42, fontWeight: 900, letterSpacing: '0.15em', fontFamily: "'Outfit', sans-serif" }}>SPARSHA</h1>
+            <p style={{ margin: '8px 0 0', fontSize: 11, color: C.muted, letterSpacing: '0.2em', fontWeight: 600 }}>CLINICAL COMMAND CENTER</p>
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 32 }}>
+            <div onClick={() => callActive ? endCall() : startCall(language)} style={{ width: 140, height: 140, borderRadius: '50%', background: `radial-gradient(circle at 30% 30%, ${callActive ? C.green : C.teal}44, ${callActive ? C.green : C.teal})`, cursor: 'pointer', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: `0 10px 30px ${callActive ? C.green : C.teal}33` }}>
+              <div style={{ position: 'absolute', inset: -12, borderRadius: '50%', border: `2px solid ${callActive ? C.green : C.teal}33`, animation: 'orbRing 2s infinite' }} />
+              <span style={{ fontSize: 40 }}>{callActive ? '🎙️' : '🧠'}</span>
+            </div>
+          </div>
+
+          <div style={{ marginBottom: 24 }}><Status callActive={callActive} aiSpeaking={aiSpeaking} thinking={thinking} wakeListening={wakeListening} /></div>
+
+          <div style={{ display: 'flex', justifyContent: 'center', minHeight: 80 }}>
+            {thinking && <div style={{ display: 'flex', gap: 6 }}>{[0,1,2].map(i=>(<div key={i} style={{width:8,height:8,borderRadius:'50%',backgroundColor:C.teal,animation:`softPulse 1s ${i*0.2}s infinite`}}/>))}</div>}
+            {callActive && !thinking && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, height: 60 }}>
+                {[0,1,2,3,4,5,6].map(i => (<div key={i} style={{ width: 5, height: 20 + Math.random() * 40, borderRadius: 3, backgroundColor: C.teal, animation: `bar ${0.5 + i * 0.1}s infinite` }} />))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Action Logs */}
+        <div style={{ width: 380, flexShrink: 0 }}>
+          <div className="shadow-card" style={{ padding: 24, borderRadius: 24 }}>
+            <h3 style={{ margin: '0 0 20px', fontSize: 18, color: C.text, fontWeight: 700 }}>Action Logs</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {messages.length === 0 ? <div style={{ fontSize: 12, color: C.muted }}>No records yet.</div> : messages.map((m, i) => (
+                <div key={i} style={{ fontSize: 13, paddingBottom: 8, borderBottom: `1px solid ${C.border}` }}>
+                  <span style={{ fontWeight: 800, color: m.role === 'user' ? C.teal : C.accent, fontSize: 10 }}>{m.role.toUpperCase()}</span>
+                  <div style={{ marginTop: 2 }}>{m.text}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Modals */}
+      <Modal title="Clinical Report Center" isOpen={activeModal === 'reports'} onClose={() => setActiveModal(null)}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {patients.map(p => (
+            <div key={p.id} style={{ padding: 16, borderRadius: 12, border: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div><strong>{p.ptId}</strong></div>
+              <button style={{ background: C.teal, color: '#fff', border: 'none', padding: '8px 16px', borderRadius: 8, cursor: 'pointer' }}>Download PDF</button>
+            </div>
+          ))}
+        </div>
+      </Modal>
+
+      <Modal title="🧪 Clinical Dosage Lab" isOpen={activeModal === 'dosage'} onClose={() => setActiveModal(null)}>
+        <DosageCalculator onAskSparsha={() => { setActiveModal(null); startCall(language); injectMessage("I need help calculating a safe pediatric dosage."); }} />
+      </Modal>
+
+      <Modal title="⚠️ Confirm Code Blue" isOpen={activeModal === 'alerts'} onClose={() => setActiveModal(null)}>
+        <div style={{ textAlign: 'center' }}>
+          <p style={{ fontWeight: 600, marginBottom: 24 }}>Trigger a ward-wide emergency alert?</p>
+          <button onClick={triggerEmergency} style={{ width: '100%', padding: 18, background: C.red, color: '#fff', border: 'none', borderRadius: 12, fontWeight: 800, fontSize: 18, cursor: 'pointer' }}>MOBILIZE TEAM</button>
+        </div>
+      </Modal>
+
+      <div style={{ position: 'fixed', bottom: '24px', left: '50%', transform: 'translateX(-50%)', zIndex: 2000 }}>
+        <MacOSDock apps={dockApps} onAppClick={handleDockClick} openApps={callActive ? ['voice'] : []} />
       </div>
     </div>
   );

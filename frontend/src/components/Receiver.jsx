@@ -45,132 +45,141 @@ export default function Receiver() {
     <div style={{ 
       padding: '48px 64px', 
       fontFamily: "'Inter', sans-serif", 
-      background: '#02040a', 
+      background: '#ffffff', 
       minHeight: '100vh', 
-      color: '#e6edf3',
-      letterSpacing: '-0.01em'
+      color: '#1a1a2e',
+      letterSpacing: '-0.01em',
+      position: 'relative',
+      overflowX: 'hidden'
     }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&display=swap');
         @keyframes pulseAlert {
-          0%, 100% { border-color: #f85149; box-shadow: 0 0 20px rgba(248, 81, 73, 0.2); }
-          50% { border-color: #8e1519; box-shadow: 0 0 40px rgba(248, 81, 73, 0.4); }
+          0%, 100% { border-color: #dc2626; box-shadow: 0 0 20px rgba(220, 38, 38, 0.1); }
+          50% { border-color: #991b1b; box-shadow: 0 0 40px rgba(220, 38, 38, 0.2); }
         }
-        @keyframes flashText {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.5; }
-        }
-        .glass-panel {
-          background: rgba(13, 17, 23, 0.6);
-          backdrop-filter: blur(12px);
-          border: 1px solid rgba(48, 54, 61, 1);
+        .shadow-panel {
+          background: #ffffff;
+          box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1), 0 0 0 1px rgba(0,0,0,0.05);
         }
       `}</style>
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 48, borderBottom: '1px solid #30363d', paddingBottom: 24 }}>
-        <div>
-          <h1 style={{ margin: 0, fontSize: 42, fontFamily: "'Outfit', sans-serif", fontWeight: 800, letterSpacing: '-0.03em', display: 'flex', alignItems: 'center', gap: 16 }}>
-            <span style={{ color: '#f78166' }}>🚨</span> Command Center
-          </h1>
-          <p style={{ margin: '8px 0 0', color: '#8b949e', fontSize: 16, fontWeight: 500 }}>{connStatus}</p>
-        </div>
-        <div style={{ textAlign: 'right' }}>
-          <div style={{ fontSize: 14, color: '#8b949e', textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 600 }}>Active Protocols</div>
-          <div style={{ fontSize: 24, fontWeight: 700, color: alerts.some(a => a.status === 'pending') ? '#f85149' : '#3fb950' }}>
-            {alerts.some(a => a.status === 'pending') ? '⚠️ EMERGENCY RESPONSE' : 'STABLE MONITORING'}
+      {/* Architectural Grid (White with Black Lines) */}
+      <div style={{
+        position: 'absolute', inset: 0, zIndex: 0, pointerEvents: 'none',
+        backgroundImage: `
+          linear-gradient(to right, rgba(0,0,0,0.05) 1px, transparent 1px),
+          linear-gradient(to bottom, rgba(0,0,0,0.05) 1px, transparent 1px)
+        `,
+        backgroundSize: '40px 40px',
+      }} />
+
+      <div style={{ position: 'relative', zIndex: 1 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 48, borderBottom: '2px solid #f1f5f9', paddingBottom: 24 }}>
+          <div>
+            <h1 style={{ margin: 0, fontSize: 42, fontFamily: "'Outfit', sans-serif", fontWeight: 800, letterSpacing: '-0.03em', display: 'flex', alignItems: 'center', gap: 16 }}>
+              <span style={{ color: '#2563eb' }}>📡</span> Command Center
+            </h1>
+            <p style={{ margin: '8px 0 0', color: '#64748b', fontSize: 16, fontWeight: 600 }}>{connStatus}</p>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontSize: 14, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 800 }}>Active Protocols</div>
+            <div style={{ fontSize: 24, fontWeight: 800, color: alerts.some(a => a.status === 'pending') ? '#dc2626' : '#16a34a' }}>
+              {alerts.some(a => a.status === 'pending') ? '⚠️ EMERGENCY RESPONSE' : 'STABLE MONITORING'}
+            </div>
           </div>
         </div>
-      </div>
-      
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(600px, 1fr))', gap: 32 }}>
-        {alerts.map(a => (
-          <div key={a.id} className="glass-panel" style={{
-            padding: 32, 
-            borderRadius: 24,
-            animation: a.status === 'pending' ? 'pulseAlert 2s infinite ease-in-out' : 'none',
-            transition: 'all 0.3s ease',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 24
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                <div style={{ 
-                  width: 64, height: 64, borderRadius: 16, 
-                  background: a.status === 'pending' ? 'rgba(248, 81, 73, 0.1)' : 'rgba(63, 185, 80, 0.1)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 32
-                }}>
-                  {a.priority === 'CRITICAL' ? '🔥' : '📞'}
-                </div>
-                <div>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: a.status === 'pending' ? '#f85149' : '#3fb950', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
-                    {a.priority || 'NORMAL'} PRIORITY
+        
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(600px, 1fr))', gap: 32 }}>
+          {alerts.map(a => (
+            <div key={a.id} className="shadow-panel" style={{
+              padding: 32, 
+              borderRadius: 24,
+              animation: a.status === 'pending' ? 'pulseAlert 2s infinite ease-in-out' : 'none',
+              transition: 'all 0.3s ease',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 24
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                  <div style={{ 
+                    width: 64, height: 64, borderRadius: 16, 
+                    background: a.status === 'pending' ? '#fee2e2' : '#f0fdf4',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 32
+                  }}>
+                    {a.priority === 'CRITICAL' ? '🏥' : '🚑'}
                   </div>
-                  <h2 style={{ margin: 0, fontSize: 28, fontFamily: "'Outfit', sans-serif", fontWeight: 700 }}>
-                    RM {a.room_number} <span style={{ color: '#484f58', margin: '0 8px' }}>/</span> {a.patient_id || 'ID-UNKNOWN'}
-                  </h2>
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 800, color: a.status === 'pending' ? '#dc2626' : '#16a34a', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+                      {a.priority || 'NORMAL'} PRIORITY
+                    </div>
+                    <h2 style={{ margin: 0, fontSize: 28, fontFamily: "'Outfit', sans-serif", fontWeight: 800 }}>
+                      RM {a.room_number} <span style={{ color: '#cbd5e1', margin: '0 8px' }}>/</span> {a.patient_id || 'ID-UNKNOWN'}
+                    </h2>
+                  </div>
+                </div>
+                <div style={{ 
+                  padding: '10px 20px', borderRadius: 12, 
+                  background: a.status === 'pending' ? '#dc2626' : '#f0fdf4',
+                  color: a.status === 'pending' ? '#fff' : '#16a34a',
+                  fontWeight: 800, fontSize: 14, letterSpacing: '0.05em'
+                }}>
+                  {a.status.toUpperCase()}
                 </div>
               </div>
-              <div style={{ 
-                padding: '10px 20px', borderRadius: 12, 
-                background: a.status === 'pending' ? '#f85149' : 'rgba(63, 185, 80, 0.1)',
-                color: a.status === 'pending' ? '#fff' : '#3fb950',
-                fontWeight: 800, fontSize: 14, letterSpacing: '0.05em'
-              }}>
-                {a.status.toUpperCase()}
-              </div>
-            </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
-              <div style={{ background: 'rgba(0,0,0,0.2)', padding: 20, borderRadius: 16, border: '1px solid #30363d' }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: '#8b949e', textTransform: 'uppercase', marginBottom: 8 }}>Situation</div>
-                <div style={{ fontSize: 18, fontWeight: 600, color: '#e6edf3' }}>{a.situation || a.reason}</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
+                <div style={{ background: '#f8fafc', padding: 20, borderRadius: 16, border: '1px solid #e2e8f0' }}>
+                  <div style={{ fontSize: 11, fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', marginBottom: 8 }}>Situation</div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: '#1a1a2e' }}>{a.situation || a.reason}</div>
+                </div>
+                <div style={{ background: '#f8fafc', padding: 20, borderRadius: 16, border: '1px solid #e2e8f0' }}>
+                  <div style={{ fontSize: 11, fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', marginBottom: 8 }}>Risk Assessment</div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: '#f78166' }}>{a.risk || 'Immediate assessment required'}</div>
+                </div>
               </div>
-              <div style={{ background: 'rgba(0,0,0,0.2)', padding: 20, borderRadius: 16, border: '1px solid #30363d' }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: '#8b949e', textTransform: 'uppercase', marginBottom: 8 }}>Risk Assessment</div>
-                <div style={{ fontSize: 18, fontWeight: 600, color: '#f78166' }}>{a.risk || 'Pending Eval'}</div>
-              </div>
-            </div>
 
-            <div style={{ background: 'rgba(0,0,0,0.2)', padding: 20, borderRadius: 16, border: '1px solid #30363d' }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: '#8b949e', textTransform: 'uppercase', marginBottom: 8 }}>Vitals / Clinical Log</div>
-              <div style={{ fontSize: 16, fontWeight: 500, color: '#e6edf3', fontFamily: 'monospace', lineHeight: 1.6 }}>{a.vitals || 'No telemetry provided'}</div>
-            </div>
-
-            {a.status === 'pending' ? (
-              <button onClick={() => handleOk(a.id)} style={{
-                padding: '24px', fontSize: 20, fontWeight: 800,
-                cursor: 'pointer', background: '#f85149', color: '#fff', 
-                border: 'none', borderRadius: 16, width: '100%',
-                boxShadow: '0 8px 24px rgba(248, 81, 73, 0.3)',
-                transition: 'transform 0.2s, background 0.2s',
-                fontFamily: "'Outfit', sans-serif",
-                letterSpacing: '0.02em'
-              }}
-              onMouseOver={(e) => e.currentTarget.style.transform = 'translateY(-2px)'}
-              onMouseOut={(e) => e.currentTarget.style.transform = 'translateY(0)'}
-              >
-                DEPLOY EMERGENCY RESPONSE
-              </button>
-            ) : (
-              <div style={{
-                padding: '24px', fontSize: 18, fontWeight: 700,
-                background: 'rgba(63, 185, 80, 0.1)', color: '#3fb950', borderRadius: 16, textAlign: 'center',
-                border: '1px solid rgba(63, 185, 80, 0.2)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12
-              }}>
-                <span style={{ fontSize: 24 }}>✅</span> Logged by {a.staff_name}: "{a.response}"
+              <div style={{ background: '#f8fafc', padding: 20, borderRadius: 16, border: '1px solid #e2e8f0' }}>
+                <div style={{ fontSize: 11, fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', marginBottom: 8 }}>Vitals / Clinical Log</div>
+                <div style={{ fontSize: 16, fontWeight: 600, color: '#1a1a2e', fontFamily: 'monospace', lineHeight: 1.6 }}>{a.vitals || 'No telemetry provided'}</div>
               </div>
-            )}
-          </div>
-        ))}
-        {alerts.length === 0 && (
-          <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '100px 0', color: '#484f58' }}>
-            <div style={{ fontSize: 64, marginBottom: 24 }}>📡</div>
-            <div style={{ fontSize: 20, fontWeight: 500 }}>All Stations Reporting Nominal Vitals</div>
-            <div style={{ fontSize: 14, marginTop: 8 }}>Secure Uplink Active • Continuous Monitoring Protocol Enabled</div>
-          </div>
-        )}
+
+              {a.status === 'pending' ? (
+                <button onClick={() => handleOk(a.id)} style={{
+                  padding: '24px', fontSize: 20, fontWeight: 800,
+                  cursor: 'pointer', background: '#dc2626', color: '#fff', 
+                  border: 'none', borderRadius: 16, width: '100%',
+                  boxShadow: '0 8px 24px rgba(220, 38, 38, 0.25)',
+                  transition: 'transform 0.2s, background 0.2s',
+                  fontFamily: "'Outfit', sans-serif",
+                  letterSpacing: '0.02em'
+                }}
+                onMouseOver={(e) => e.currentTarget.style.transform = 'translateY(-2px)'}
+                onMouseOut={(e) => e.currentTarget.style.transform = 'translateY(0)'}
+                >
+                  ACKNOWLEDGE EMERGENCY
+                </button>
+              ) : (
+                <div style={{
+                  padding: '24px', fontSize: 18, fontWeight: 800,
+                  background: '#f0fdf4', color: '#16a34a', borderRadius: 16, textAlign: 'center',
+                  border: '1px solid rgba(22, 163, 74, 0.2)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12
+                }}>
+                  <span style={{ fontSize: 24 }}>✅</span> Response Logged: "{a.response}"
+                </div>
+              )}
+            </div>
+          ))}
+          {alerts.length === 0 && (
+            <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '100px 0', color: '#94a3b8' }}>
+              <div style={{ fontSize: 64, marginBottom: 24 }}>🧬</div>
+              <div style={{ fontSize: 22, fontWeight: 700, color: '#64748b' }}>All Stations Reporting Nominal Vitals</div>
+              <div style={{ fontSize: 14, marginTop: 8, fontWeight: 500 }}>Secure Uplink Active • Continuous Monitoring Enabled</div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
