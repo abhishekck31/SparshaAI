@@ -2,22 +2,22 @@ import React, { useState, useCallback, useEffect, useRef } from 'react';
 import useWakeWord  from '../hooks/useWakeWord';
 import useVapiVoice from '../hooks/useVapiVoice';
 
-// ── Design Tokens (Premium Medical Palette) ──────────────────────────────────
+// ── Design Tokens (Clinical White Palette) ──────────────────────────────────
 const C = {
-  bg:       '#02040a',       // Deepest space black
-  surface:  '#0d1117',       // GitHub-style dark grey
-  surfaceB: '#161b22',       // Slightly lighter grey for cards
-  border:   '#30363d',       // Subdued border
-  accent:   '#f78166',       // Warm coral/orange (medical urgency)
-  accentLo: '#c4432b',       // Darker coral
-  text:     '#e6edf3',       // Soft white
-  muted:    '#8b949e',       // Muted grey
-  dim:      '#484f58',       // Dimmer grey
-  green:    '#3fb950',       // Health green
-  teal:     '#2f81f7',       // Science blue (Vapi AI)
-  blue:     '#58a6ff',       // Soft blue
-  red:      '#f85149',       // Alert red
-  redDark:  '#8e1519',       // Deep alert red
+  bg:       '#ffffff',       // Pure Clinical White
+  surface:  '#f8fafc',       // Soft off-white
+  surfaceB: '#ffffff',       // White for cards
+  border:   '#e2e8f0',       // Light grey border
+  accent:   '#f78166',       // Warm coral (stays for urgency)
+  accentLo: '#c4432b',       
+  text:     '#1a1a2e',       // Deep Charcoal for readability
+  muted:    '#64748b',       // Muted slate
+  dim:      '#94a3b8',       
+  green:    '#16a34a',       
+  teal:     '#2563eb',       // Deep Science Blue
+  blue:     '#3b82f6',       
+  red:      '#dc2626',       
+  redDark:  '#991b1b',       
 };
 
 const LANGS = [
@@ -29,7 +29,7 @@ const LANGS = [
   { value: 'mr', label: 'Marathi'  },
 ];
 
-// ── Premium CSS System ────────────────────────────────────────────────────────
+// ── Premium CSS System (Light Mode) ──────────────────────────────────────────
 const STYLES = `
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Outfit:wght@400;600;800&display=swap');
 
@@ -38,6 +38,8 @@ const STYLES = `
   body {
     font-family: 'Inter', -apple-system, sans-serif;
     letter-spacing: -0.011em;
+    background-color: #ffffff;
+    color: #1a1a2e;
   }
 
   /* Smooth Pulse for Vitals */
@@ -49,38 +51,38 @@ const STYLES = `
 
   /* Orb ring animation */
   @keyframes orbRing {
-    0%   { box-shadow: 0 0 0 0px var(--ring-color); opacity: 0.8; }
-    60%  { box-shadow: 0 0 0 25px transparent;      opacity: 0.2; }
+    0%   { box-shadow: 0 0 0 0px var(--ring-color); opacity: 0.6; }
+    60%  { box-shadow: 0 0 0 25px transparent;      opacity: 0.1; }
     100% { box-shadow: 0 0 0 0px transparent;        opacity: 0;   }
   }
 
   /* Waveform bars */
   @keyframes bar {
-    0%, 100% { transform: scaleY(0.2); opacity: 0.4; }
+    0%, 100% { transform: scaleY(0.2); opacity: 0.6; }
     50%       { transform: scaleY(1);   opacity: 1;   }
   }
 
-  /* Emergency flash with smooth transition */
+  /* Emergency flash */
   @keyframes flash {
-    0%, 100% { background-color: #f85149; opacity: 1; }
-    50%       { background-color: #8e1519; opacity: 0.8; }
+    0%, 100% { background-color: #dc2626; color: #ffffff; }
+    50%       { background-color: #991b1b; color: #ffffff; }
   }
 
-  /* Glassmorphism utility */
-  .glass {
-    background: rgba(22, 27, 34, 0.7) !important;
-    backdrop-filter: blur(12px) !important;
-    border: 1px solid rgba(240, 246, 252, 0.1) !important;
+  /* Shadow Card utility */
+  .shadow-card {
+    background: #ffffff !important;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1), 0 0 0 1px rgba(0,0,0,0.05) !important;
+    border: none !important;
   }
 
-  /* Modern Scrollbar */
+  /* Modern Scrollbar (Light) */
   ::-webkit-scrollbar { width: 6px; }
-  ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: #30363d; border-radius: 10px; }
-  ::-webkit-scrollbar-thumb:hover { background: #484f58; }
+  ::-webkit-scrollbar-track { background: #f1f5f9; }
+  ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+  ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
 
   .title-shimmer {
-    background: linear-gradient(90deg, #e6edf3 0%, #58a6ff 50%, #e6edf3 100%);
+    background: linear-gradient(90deg, #1a1a2e 0%, #2563eb 50%, #1a1a2e 100%);
     background-size: 200% auto;
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
@@ -677,28 +679,20 @@ export default function VoiceInterface() {
     }}>
       <style>{STYLES}</style>
 
-      {/* Modern IoT Grid Background */}
+      {/* Clean Architectural Grid (White with Black Lines) */}
       <div style={{
-        position: 'absolute', inset: 0, zIndex: 0, opacity: 0.6, pointerEvents: 'none',
+        position: 'absolute', inset: 0, zIndex: 0, opacity: 1, pointerEvents: 'none',
         backgroundImage: `
-          linear-gradient(to right, ${C.border}66 1px, transparent 1px),
-          linear-gradient(to bottom, ${C.border}66 1px, transparent 1px)
+          linear-gradient(to right, rgba(0,0,0,0.05) 1px, transparent 1px),
+          linear-gradient(to bottom, rgba(0,0,0,0.05) 1px, transparent 1px)
         `,
         backgroundSize: '40px 40px',
       }} />
 
-      {/* AI Core Glow Effect */}
+      {/* Subtle Depth Shadow */}
       <div style={{
         position: 'absolute', inset: 0, zIndex: 0, pointerEvents: 'none',
-        background: `radial-gradient(circle at 50% 30%, ${C.teal}33 0%, transparent 70%)`,
-      }} />
-
-      {/* Clinical Scanline Effect */}
-      <div style={{
-        position: 'absolute', inset: 0, zIndex: 0, pointerEvents: 'none',
-        background: 'linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.1) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.02), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.02))',
-        backgroundSize: '100% 4px, 3px 100%',
-        opacity: 0.15
+        background: `radial-gradient(circle at 50% 30%, rgba(37, 99, 235, 0.03) 0%, transparent 70%)`,
       }} />
 
       {/* 3-Column Layout */}
