@@ -14,11 +14,16 @@ const activeAlerts = [];
 const sseClients = new Set();
 
 function broadcastAlerts() {
-  const data = JSON.stringify(activeAlerts);
+  const data = JSON.stringify({ type: 'CRITICAL_ALERT', timestamp: new Date() });
   for (const res of sseClients) {
     res.write(`data: ${data}\n\n`);
   }
 }
+
+app.post('/api/trigger-emergency', (req, res) => {
+  broadcastAlerts();
+  res.status(200).json({ success: true });
+});
 
 // ── Groq client ───────────────────────────────────────────────────────────────
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
@@ -36,7 +41,11 @@ const storage = multer.diskStorage({
 const upload = multer({ storage });
 
 // ── Middleware ────────────────────────────────────────────────────────────────
-app.use(cors());
+app.use(cors({
+  origin: '*',
+  methods: ['GET', 'POST'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
 app.use(express.json());
 
 // ── Emergency patterns ────────────────────────────────────────────────────────
@@ -100,6 +109,48 @@ function classifyIntent(text) {
   }
   return 'GENERAL';
 }
+
+// ── PDF Generation ────────────────────────────────────────────────────────────
+app.post('/api/generate-pdf', async (req, res) => {
+  console.log(`[PDF] Generating report for: ${req.body.ptId}`);
+  try {
+    const { ptId, vitals } = req.body;
+    const doc = new PDFDocument({ margin: 50 });
+    
+    let buffers = [];
+    doc.on('data', (chunk) => buffers.push(chunk));
+    doc.on('end', () => {
+      const pdfData = Buffer.concat(buffers);
+      console.log(`[PDF] Success: ${pdfData.length} bytes generated.`);
+      res.writeHead(200, {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `attachment; filename="Report-${ptId}.pdf"`,
+        'Content-Length': pdfData.length
+      });
+      res.end(pdfData);
+    });
+
+    // Simple Safe-Mode Content
+    doc.fontSize(25).text('SPARSHA AI CLINICAL REPORT', { align: 'center' });
+    doc.moveDown();
+    doc.fontSize(14).text(`Patient ID: ${ptId}`);
+    doc.text(`Time: ${new Date().toLocaleString()}`);
+    doc.moveDown();
+    doc.text('-------------------------------------------');
+    doc.text(`Heart Rate: ${vitals.hr} BPM`);
+    doc.text(`SpO2: ${vitals.spo2}%`);
+    doc.text(`Respiratory Rate: ${vitals.rr}`);
+    doc.text(`Temperature: ${vitals.temp} C`);
+    doc.text('-------------------------------------------');
+    doc.moveDown();
+    doc.fontSize(10).text('Confidential Clinical Data.', { oblique: true });
+
+    doc.end();
+  } catch (err) {
+    console.error('[PDF] Critical Error:', err);
+    if (!res.headersSent) res.status(500).send('Generation Failed');
+  }
+});
 
 // ── Medical-only preamble appended to every system prompt ─────────────────────
 const MEDICAL_GUARD =
