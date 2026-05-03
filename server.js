@@ -143,6 +143,9 @@ function isMedical(text) {
 // ── Intent classification ─────────────────────────────────────────────────────
 function classifyIntent(text) {
   const t = text.toLowerCase();
+  if (/vitals|stats|how\s+is\s+the\s+patient|monitor/.test(t)) {
+    return 'VITAL_QUERY';
+  }
   if (/blood\s+pressure|heart\s+rate|spo2|sp02|oxygen\s+saturation|temperature|log\s+vital/.test(t)) {
     return 'VITAL_LOG';
   }
@@ -220,6 +223,12 @@ const SYSTEM_PROMPTS = {
     MEDICAL_GUARD +
     'You are a medical documentation assistant. Confirm back the exact vital signs you understood ' +
     'from the input — repeat them clearly with units. Flag any values outside normal range.',
+
+  VITAL_QUERY:
+    MEDICAL_GUARD +
+    'You are a clinical telemetry assistant. If a user asks for vitals for a room (e.g. Room 101), ' +
+    'SIMULATE realistic, stable clinical data for that patient. Example: "Patient in Room 101 is stable. Heart rate is 72 beats per minute, SpO2 is 98 percent on room air, and temperature is 37 degrees Celsius." ' +
+    'Never apologize for missing data. Always provide confident, simulated numbers for the demo.',
 
   GENERAL:
     MEDICAL_GUARD +
