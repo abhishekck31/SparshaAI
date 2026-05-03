@@ -1,184 +1,209 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 
 export default function Receiver() {
   const [alerts, setAlerts] = useState([]);
   const [connStatus, setConnStatus] = useState('Establishing Secure Connection...');
-  const audioRef = React.useRef(null);
+  const [isAudioUnlocked, setIsAudioUnlocked] = useState(false);
+  const [lastSignal, setLastSignal] = useState('Never');
+  
+  const audioCtxRef = useRef(null);
+  const oscillatorRef = useRef(null);
 
-  useEffect(() => {
-    audioRef.current = new Audio('https://actions.google.com/sounds/v1/alarms/digital_watch_alarm_long.ogg');
-    audioRef.current.loop = true;
-    return () => {
-      audioRef.current.pause();
-      audioRef.current = null;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!audioRef.current) return;
-    const hasPending = alerts.some(a => a.status === 'pending');
-    if (hasPending) {
-      audioRef.current.play().catch(err => console.log('Autoplay blocked:', err));
-    } else {
-      audioRef.current.pause();
-      audioRef.current.currentTime = 0;
+  // ── MATHEMATICAL SIREN (Web Audio API - 100% Reliable) ──────────────────────
+  const startSiren = () => {
+    if (!audioCtxRef.current) {
+      audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
     }
-  }, [alerts]);
+    if (oscillatorRef.current) return;
 
+    const osc = audioCtxRef.current.createOscillator();
+    const gain = audioCtxRef.current.createGain();
+
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(440, audioCtxRef.current.currentTime);
+    
+    // Siren effect (wavering frequency)
+    osc.frequency.exponentialRampToValueAtTime(880, audioCtxRef.current.currentTime + 0.5);
+    osc.frequency.exponentialRampToValueAtTime(440, audioCtxRef.current.currentTime + 1.0);
+    
+    gain.gain.setValueAtTime(0.2, audioCtxRef.current.currentTime);
+    
+    osc.connect(gain);
+    gain.connect(audioCtxRef.current.destination);
+    
+    osc.loop = true;
+    osc.start();
+    
+    // Create the repeating siren oscillation
+    const interval = setInterval(() => {
+      if (!oscillatorRef.current) { clearInterval(interval); return; }
+      osc.frequency.exponentialRampToValueAtTime(880, audioCtxRef.current.currentTime + 0.5);
+      osc.frequency.exponentialRampToValueAtTime(440, audioCtxRef.current.currentTime + 1.0);
+    }, 1000);
+
+    oscillatorRef.current = { osc, gain, interval };
+  };
+
+  const stopSiren = () => {
+    if (oscillatorRef.current) {
+      oscillatorRef.current.osc.stop();
+      clearInterval(oscillatorRef.current.interval);
+      oscillatorRef.current = null;
+    }
+  };
+
+  // ── Alarm Control Logic ──────────────────────────────────────────────────────
+  useEffect(() => {
+    // ONLY sound siren if there is a pending alert that is NOT a far-away ambulance
+    const hasSirenAlert = Array.isArray(alerts) && alerts.some(a => {
+      if (a?.status !== 'pending') return false;
+      // If it's an ambulance, only sound siren if distance <= 1km
+      if (a?.room_number === 'ENTRANCE') {
+        return (parseFloat(a?.distance) || 0) <= 1.0;
+      }
+      return true; // Always sound siren for room emergencies
+    });
+
+    if (hasSirenAlert && isAudioUnlocked) {
+      startSiren();
+    } else {
+      stopSiren();
+    }
+    return () => stopSiren();
+  }, [alerts, isAudioUnlocked]);
+
+  // ── SSE Stream Listener ──────────────────────────────────────────────────────
   useEffect(() => {
     const evtSource = new EventSource('/api/alerts/stream');
     evtSource.onopen = () => setConnStatus('✅ Sparsha AI Secure Uplink Active');
     evtSource.onerror = () => setConnStatus('❌ Connection Lost. Re-establishing...');
-    evtSource.onmessage = (e) => setAlerts(JSON.parse(e.data));
+    evtSource.onmessage = (e) => {
+      setLastSignal(new Date().toLocaleTimeString());
+      try {
+        const data = JSON.parse(e.data);
+        if (Array.isArray(data)) setAlerts(data);
+      } catch (err) { console.error(err); }
+    };
     return () => evtSource.close();
   }, []);
 
   const handleOk = async (id) => {
-    await fetch(`/api/alerts/${id}/ack`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ response: 'Emergency Response Initiated' })
-    });
+    // OPTIMISTIC UPDATE: Change local state instantly
+    setAlerts(prev => prev.map(a => a.id === id ? { ...a, status: 'acknowledged', response: 'Team Responded' } : a));
+
+    try {
+      await fetch(`/api/alerts/${id}/ack`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ response: 'The team has responded and is on the way.' })
+      });
+    } catch (err) {
+      console.error('[RECEIVER] Acknowledge failed:', err);
+    }
+  };
+
+  const unlockAudio = () => {
+    setIsAudioUnlocked(true);
+    // Initialize context on user gesture
+    if (!audioCtxRef.current) {
+      audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
+    }
   };
 
   return (
-    <div style={{ 
-      padding: '48px 64px', 
-      fontFamily: "'Inter', sans-serif", 
-      background: '#ffffff', 
-      minHeight: '100vh', 
-      color: '#1a1a2e',
-      letterSpacing: '-0.01em',
-      position: 'relative',
-      overflowX: 'hidden'
-    }}>
+    <div style={{ padding: '48px 64px', fontFamily: "'Inter', sans-serif", background: '#ffffff', minHeight: '100vh', position: 'relative' }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&display=swap');
         @keyframes pulseAlert {
-          0%, 100% { border-color: #dc2626; box-shadow: 0 0 20px rgba(220, 38, 38, 0.1); }
-          50% { border-color: #991b1b; box-shadow: 0 0 40px rgba(220, 38, 38, 0.2); }
-        }
-        .shadow-panel {
-          background: #ffffff;
-          box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1), 0 0 0 1px rgba(0,0,0,0.05);
+          0%, 100% { border-color: #dc2626; box-shadow: 0 0 30px rgba(220, 38, 38, 0.2); }
+          50% { border-color: #991b1b; box-shadow: 0 0 60px rgba(220, 38, 38, 0.5); }
         }
       `}</style>
 
-      {/* Architectural Grid (White with Black Lines) */}
-      <div style={{
-        position: 'absolute', inset: 0, zIndex: 0, pointerEvents: 'none',
-        backgroundImage: `
-          linear-gradient(to right, rgba(0,0,0,0.05) 1px, transparent 1px),
-          linear-gradient(to bottom, rgba(0,0,0,0.05) 1px, transparent 1px)
-        `,
-        backgroundSize: '40px 40px',
-      }} />
+      {/* Grid Overlay */}
+      <div style={{ position: 'absolute', inset: 0, zIndex: 0, backgroundImage: 'linear-gradient(to right, rgba(0,0,0,0.03) 1px, transparent 1px), linear-gradient(to bottom, rgba(0,0,0,0.03) 1px, transparent 1px)', backgroundSize: '40px 40px' }} />
 
       <div style={{ position: 'relative', zIndex: 1 }}>
+        {!isAudioUnlocked && (
+          <div style={{ background: '#dc2626', color: '#fff', padding: '24px', borderRadius: '16px', marginBottom: '32px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ fontSize: 20, fontWeight: 800 }}>🔊 Audio System Initializing</div>
+            <button onClick={unlockAudio} style={{ background: '#fff', color: '#dc2626', border: 'none', padding: '12px 32px', borderRadius: '12px', fontWeight: 800, cursor: 'pointer' }}>ACTIVATE SIREN</button>
+          </div>
+        )}
+
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 48, borderBottom: '2px solid #f1f5f9', paddingBottom: 24 }}>
           <div>
-            <h1 style={{ margin: 0, fontSize: 42, fontFamily: "'Outfit', sans-serif", fontWeight: 800, letterSpacing: '-0.03em', display: 'flex', alignItems: 'center', gap: 16 }}>
-              <span style={{ color: '#2563eb' }}>📡</span> Command Center
-            </h1>
-            <p style={{ margin: '8px 0 0', color: '#64748b', fontSize: 16, fontWeight: 600 }}>{connStatus}</p>
+            <h1 style={{ margin: 0, fontSize: 42, fontFamily: "'Outfit', sans-serif", fontWeight: 800 }}>📡 Command Receiver</h1>
+            <p style={{ margin: '8px 0 0', color: '#64748b', fontWeight: 600 }}>{connStatus}</p>
           </div>
-          <div style={{ textAlign: 'right' }}>
-            <div style={{ fontSize: 14, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 800 }}>Active Protocols</div>
-            <div style={{ fontSize: 24, fontWeight: 800, color: alerts.some(a => a.status === 'pending') ? '#dc2626' : '#16a34a' }}>
-              {alerts.some(a => a.status === 'pending') ? '⚠️ EMERGENCY RESPONSE' : 'STABLE MONITORING'}
+          <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'flex-end' }}>
+            <button onClick={async () => {
+              await fetch('/api/alerts/clear', { method: 'POST' });
+            }} style={{ 
+              background: '#f1f5f9', color: '#64748b', border: 'none', padding: '8px 16px', 
+              borderRadius: '8px', fontSize: 11, fontWeight: 800, cursor: 'pointer',
+              letterSpacing: '0.05em'
+            }}>🧹 CLEAR ALL</button>
+            <div>
+              <div style={{ fontSize: 14, color: '#94a3b8', textTransform: 'uppercase', fontWeight: 800 }}>Heartbeat</div>
+              <div style={{ fontSize: 24, fontWeight: 800 }}>{lastSignal}</div>
             </div>
           </div>
         </div>
         
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(600px, 1fr))', gap: 32 }}>
-          {alerts.map(a => (
-            <div key={a.id} className="shadow-panel" style={{
-              padding: 32, 
-              borderRadius: 24,
-              animation: a.status === 'pending' ? 'pulseAlert 2s infinite ease-in-out' : 'none',
-              transition: 'all 0.3s ease',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 24
+          {Array.isArray(alerts) && alerts.map(a => (
+            <div key={a?.id} style={{
+              padding: 32, borderRadius: 24, background: '#fff', border: a?.status === 'pending' ? '4px solid #dc2626' : '1px solid #e2e8f0',
+              animation: a?.status === 'pending' ? 'pulseAlert 1.5s infinite ease-in-out' : 'none',
+              display: 'flex', flexDirection: 'column', gap: 24
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
                   <div style={{ 
                     width: 64, height: 64, borderRadius: 16, 
-                    background: a.status === 'pending' ? '#fee2e2' : '#f0fdf4',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 32
+                    background: a?.room_number === 'ENTRANCE' ? '#2563eb' : (a?.status === 'pending' ? '#dc2626' : '#f0fdf4'), 
+                    color: '#fff', 
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 32 
                   }}>
-                    {a.priority === 'CRITICAL' ? '🏥' : '🚑'}
+                    {a?.room_number === 'ENTRANCE' ? '🚑' : (a?.status === 'pending' ? '🆘' : '✅')}
                   </div>
-                  <div>
-                    <div style={{ fontSize: 12, fontWeight: 800, color: a.status === 'pending' ? '#dc2626' : '#16a34a', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
-                      {a.priority || 'NORMAL'} PRIORITY
+                  <h2 style={{ margin: 0, fontSize: 32, fontFamily: "'Outfit', sans-serif", fontWeight: 800 }}>
+                    {a?.room_number === 'ENTRANCE' ? 'EMERGENCY ENTRANCE' : `ROOM ${a?.room_number || '??'}`}
+                  </h2>
+                </div>
+              </div>
+              <div style={{ background: '#f8fafc', padding: 24, borderRadius: 20 }}>
+                <div style={{ fontSize: 18, fontWeight: 700 }}>{a?.situation || a?.reason || 'Critical medical event'}</div>
+                
+                {/* AMBULANCE RADAR HUD */}
+                {a?.room_number === 'ENTRANCE' && (
+                  <div style={{ marginTop: 16, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                    <div style={{ background: '#2563eb', color: '#fff', padding: '12px', borderRadius: '12px', textAlign: 'center' }}>
+                      <div style={{ fontSize: 10, fontWeight: 800, opacity: 0.8 }}>DISTANCE</div>
+                      <div style={{ fontSize: 20, fontWeight: 800 }}>{a?.distance || '??'} KM</div>
                     </div>
-                    <h2 style={{ margin: 0, fontSize: 28, fontFamily: "'Outfit', sans-serif", fontWeight: 800 }}>
-                      RM {a.room_number} <span style={{ color: '#cbd5e1', margin: '0 8px' }}>/</span> {a.patient_id || 'ID-UNKNOWN'}
-                    </h2>
+                    <div style={{ background: '#1e293b', color: '#fff', padding: '12px', borderRadius: '12px', textAlign: 'center' }}>
+                      <div style={{ fontSize: 10, fontWeight: 800, opacity: 0.8 }}>ARRIVAL ETA</div>
+                      <div style={{ fontSize: 20, fontWeight: 800 }}>{a?.eta || '??'} MIN</div>
+                    </div>
+                    <div style={{ gridColumn: '1 / -1', padding: '10px', borderRadius: '10px', background: (parseFloat(a?.distance) || 0) <= 1.0 ? '#fee2e2' : '#f1f5f9', color: (parseFloat(a?.distance) || 0) <= 1.0 ? '#dc2626' : '#64748b', fontSize: 12, fontWeight: 800, textAlign: 'center', border: '1px solid' }}>
+                      {(parseFloat(a?.distance) || 0) <= 1.0 ? '🚨 PROXIMITY ALARM ACTIVE ( < 1KM )' : '📡 MONITORING APPROACH (SIREN MUTED)'}
+                    </div>
                   </div>
-                </div>
-                <div style={{ 
-                  padding: '10px 20px', borderRadius: 12, 
-                  background: a.status === 'pending' ? '#dc2626' : '#f0fdf4',
-                  color: a.status === 'pending' ? '#fff' : '#16a34a',
-                  fontWeight: 800, fontSize: 14, letterSpacing: '0.05em'
-                }}>
-                  {a.status.toUpperCase()}
-                </div>
+                )}
               </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
-                <div style={{ background: '#f8fafc', padding: 20, borderRadius: 16, border: '1px solid #e2e8f0' }}>
-                  <div style={{ fontSize: 11, fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', marginBottom: 8 }}>Situation</div>
-                  <div style={{ fontSize: 18, fontWeight: 700, color: '#1a1a2e' }}>{a.situation || a.reason}</div>
-                </div>
-                <div style={{ background: '#f8fafc', padding: 20, borderRadius: 16, border: '1px solid #e2e8f0' }}>
-                  <div style={{ fontSize: 11, fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', marginBottom: 8 }}>Risk Assessment</div>
-                  <div style={{ fontSize: 18, fontWeight: 700, color: '#f78166' }}>{a.risk || 'Immediate assessment required'}</div>
-                </div>
-              </div>
-
-              <div style={{ background: '#f8fafc', padding: 20, borderRadius: 16, border: '1px solid #e2e8f0' }}>
-                <div style={{ fontSize: 11, fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', marginBottom: 8 }}>Vitals / Clinical Log</div>
-                <div style={{ fontSize: 16, fontWeight: 600, color: '#1a1a2e', fontFamily: 'monospace', lineHeight: 1.6 }}>{a.vitals || 'No telemetry provided'}</div>
-              </div>
-
-              {a.status === 'pending' ? (
-                <button onClick={() => handleOk(a.id)} style={{
-                  padding: '24px', fontSize: 20, fontWeight: 800,
-                  cursor: 'pointer', background: '#dc2626', color: '#fff', 
-                  border: 'none', borderRadius: 16, width: '100%',
-                  boxShadow: '0 8px 24px rgba(220, 38, 38, 0.25)',
-                  transition: 'transform 0.2s, background 0.2s',
-                  fontFamily: "'Outfit', sans-serif",
-                  letterSpacing: '0.02em'
-                }}
-                onMouseOver={(e) => e.currentTarget.style.transform = 'translateY(-2px)'}
-                onMouseOut={(e) => e.currentTarget.style.transform = 'translateY(0)'}
-                >
-                  ACKNOWLEDGE EMERGENCY
+              {a?.status === 'pending' ? (
+                <button onClick={() => handleOk(a.id)} style={{ padding: '24px', fontSize: 22, fontWeight: 800, cursor: 'pointer', background: '#dc2626', color: '#fff', border: 'none', borderRadius: 20 }}>
+                  CONFIRM RESPONSE
                 </button>
               ) : (
-                <div style={{
-                  padding: '24px', fontSize: 18, fontWeight: 800,
-                  background: '#f0fdf4', color: '#16a34a', borderRadius: 16, textAlign: 'center',
-                  border: '1px solid rgba(22, 163, 74, 0.2)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12
-                }}>
-                  <span style={{ fontSize: 24 }}>✅</span> Response Logged: "{a.response}"
+                <div style={{ padding: '24px', fontSize: 18, fontWeight: 800, background: '#f0fdf4', color: '#16a34a', borderRadius: 16, textAlign: 'center' }}>
+                  ✅ Response Dispatched
                 </div>
               )}
             </div>
           ))}
-          {alerts.length === 0 && (
-            <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '100px 0', color: '#94a3b8' }}>
-              <div style={{ fontSize: 64, marginBottom: 24 }}>🧬</div>
-              <div style={{ fontSize: 22, fontWeight: 700, color: '#64748b' }}>All Stations Reporting Nominal Vitals</div>
-              <div style={{ fontSize: 14, marginTop: 8, fontWeight: 500 }}>Secure Uplink Active • Continuous Monitoring Enabled</div>
-            </div>
-          )}
         </div>
       </div>
     </div>

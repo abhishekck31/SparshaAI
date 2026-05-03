@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sparsha AI | Intelligence that Listens. Care that Responds.</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400..700;1,400..700&family=Outfit:wght@100..900&family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #fdfcf9;
+            --text: #1d1d1b;
+            --muted: #6b6b66;
+            --accent: #2563eb;
+            --border: #e6e4df;
+            --card: #ffffff;
+            --serif: 'Lora', serif;
+            --sans: 'Outfit', sans-serif;
+            --mono: 'Inter', sans-serif;
+        }
+
+        * {
+            box-sizing: border-box;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg);
+            color: var(--text);
+            font-family: var(--sans);
+            line-height: 1.6;
+        }
+
+        /* ── Navigation ────────────────────────────────────────────────── */
+        nav {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 24px 80px;
+            position: fixed;
+            top: 0;
+            width: 100%;
+            background: rgba(253, 252, 249, 0.8);
+            backdrop-filter: blur(12px);
+            z-index: 1000;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .logo {
+            font-family: var(--sans);
+            font-weight: 800;
+            font-size: 24px;
+            letter-spacing: -0.02em;
+            color: var(--text);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 40px;
+            font-weight: 600;
+            font-size: 14px;
+            color: var(--muted);
+        }
+
+        .nav-links a {
+            text-decoration: none;
+            color: inherit;
+            transition: color 0.2s;
+        }
+
+        .nav-links a:hover {
+            color: var(--text);
+        }
+
+        .cta-button {
+            background: var(--text);
+            color: #fff;
+            padding: 12px 24px;
+            border-radius: 100px;
+            font-weight: 700;
+            font-size: 14px;
+            text-decoration: none;
+            transition: transform 0.2s;
+        }
+
+        .cta-button:hover {
+            transform: translateY(-2px);
+        }
+
+        /* ── Hero Section ──────────────────────────────────────────────── */
+        header {
+            padding: 180px 80px 100px;
+            max-width: 1200px;
+            margin: 0 auto;
+            text-align: center;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 6px 16px;
+            background: #f1efea;
+            border: 1px solid var(--border);
+            border-radius: 100px;
+            font-size: 12px;
+            font-weight: 800;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            margin-bottom: 32px;
+        }
+
+        h1 {
+            font-family: var(--serif);
+            font-size: 82px;
+            font-weight: 500;
+            line-height: 1.1;
+            margin: 0 0 32px;
+            letter-spacing: -0.04em;
+        }
+
+        .hero-desc {
+            font-size: 22px;
+            color: var(--muted);
+            max-width: 700px;
+            margin: 0 auto 48px;
+            font-weight: 400;
+        }
+
+        .hero-image {
+            width: 100%;
+            height: 600px;
+            background: #e6e4df;
+            border-radius: 40px;
+            margin-top: 64px;
+            overflow: hidden;
+            box-shadow: 0 40px 100px rgba(0,0,0,0.1);
+            position: relative;
+        }
+
+        .hero-image img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        /* ── Features ──────────────────────────────────────────────────── */
+        .section-padding {
+            padding: 120px 80px;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .section-title {
+            font-family: var(--serif);
+            font-size: 48px;
+            margin-bottom: 64px;
+            text-align: center;
+        }
+
+        .grid-3 {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 32px;
+        }
+
+        .card {
+            background: var(--card);
+            padding: 48px;
+            border-radius: 32px;
+            border: 1px solid var(--border);
+            transition: all 0.3s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-8px);
+            box-shadow: 0 20px 40px rgba(0,0,0,0.05);
+        }
+
+        .card-icon {
+            font-size: 40px;
+            margin-bottom: 24px;
+        }
+
+        .card h3 {
+            font-family: var(--sans);
+            font-size: 24px;
+            font-weight: 800;
+            margin: 0 0 16px;
+        }
+
+        .card p {
+            color: var(--muted);
+            font-size: 16px;
+            line-height: 1.6;
+        }
+
+        /* ── Future Scope ──────────────────────────────────────────────── */
+        .roadmap {
+            background: #1d1d1b;
+            color: #fff;
+            border-radius: 60px;
+            padding: 100px 80px;
+            margin: 0 40px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .roadmap h2 {
+            font-family: var(--serif);
+            font-size: 64px;
+            margin-bottom: 48px;
+        }
+
+        .roadmap-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 80px;
+        }
+
+        .roadmap-item h4 {
+            font-size: 24px;
+            margin-bottom: 16px;
+            color: #e6e4df;
+        }
+
+        .roadmap-item p {
+            color: #a1a19a;
+            font-size: 18px;
+        }
+
+        /* ── Footer ────────────────────────────────────────────────────── */
+        footer {
+            padding: 80px;
+            border-top: 1px solid var(--border);
+            text-align: center;
+        }
+
+        .footer-logo {
+            font-size: 24px;
+            font-weight: 800;
+            margin-bottom: 24px;
+        }
+
+        .copyright {
+            color: var(--muted);
+            font-size: 14px;
+        }
+
+        @media (max-width: 1024px) {
+            h1 { font-size: 56px; }
+            .grid-3 { grid-template-columns: 1fr; }
+            .roadmap-grid { grid-template-columns: 1fr; }
+            nav { padding: 24px 40px; }
+            header, .section-padding { padding: 120px 40px; }
+        }
+    </style>
+</head>
+<body>
+
+    <nav>
+        <div class="logo">🧠 Sparsha AI</div>
+        <div class="nav-links">
+            <a href="#features">Capabilities</a>
+            <a href="#roadmap">Roadmap</a>
+            <a href="#about">Philosophy</a>
+        </div>
+        <a href="#" class="cta-button">Request Demo</a>
+    </nav>
+
+    <header>
+        <div class="badge">The Future of Critical Care</div>
+        <h1>Intelligence that Listens.<br>Care that Responds.</h1>
+        <p class="hero-desc">
+            Sparsha AI is the clinical operating system for the modern ward. Using Bionic Hearing and real-time triage, we bridge the gap between patient telemetry and life-saving action.
+        </p>
+        <div class="hero-image">
+            <img src="./sparsha_saas_hero.png" alt="Sparsha AI Dashboard">
+        </div>
+    </header>
+
+    <section id="features" class="section-padding">
+        <h2 class="section-title">Built for the Edge of Medicine</h2>
+        <div class="grid-3">
+            <div class="card">
+                <div class="card-icon">🎙️</div>
+                <h3>Bionic Hearing</h3>
+                <p>Advanced wake-word detection and clinical intent recognition. Sparsha filters ward noise to catch every emergency call with 99.9% accuracy.</p>
+            </div>
+            <div class="card">
+                <div class="card-icon">📟</div>
+                <h3>Closed-Loop Paging</h3>
+                <p>Instant synchronization between AI detection and staff response. Our smart pager ensures the right specialist arrives at the right room, instantly.</p>
+            </div>
+            <div class="card">
+                <div class="card-icon">🚑</div>
+                <h3>Triage Radar</h3>
+                <p>From the first mile to the emergency entrance. Monitor ambulance arrivals with sub-meter precision and automated entrance preparation.</p>
+            </div>
+        </div>
+    </section>
+
+    <section class="section-padding">
+        <div class="roadmap" id="roadmap">
+            <h2>The Roadmap</h2>
+            <div class="roadmap-grid">
+                <div class="roadmap-item">
+                    <h4>Predictive Mortality Risk</h4>
+                    <p>Using deep learning on real-time vitals to predict cardiovascular collapse 30 minutes before it occurs.</p>
+                </div>
+                <div class="roadmap-item">
+                    <h4>Multi-Lingual Support</h4>
+                    <p>Breaking language barriers in triage with support for 24+ languages, ensuring care for everyone, everywhere.</p>
+                </div>
+                <div class="roadmap-item">
+                    <h4>Seamless EMR Sync</h4>
+                    <p>Automatic report generation and direct injection into Epic and Cerner systems for zero-paperwork workflows.</p>
+                </div>
+                <div class="roadmap-item">
+                    <h4>Distributed Ward Mesh</h4>
+                    <p>A resilient network of IoT clinical sensors that work even during network outages.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="section-padding" style="text-align: center;">
+        <h2 class="section-title" style="margin-bottom: 24px;">Ready to Upgrade your Ward?</h2>
+        <p class="hero-desc">Join 50+ leading hospitals currently piloting Sparsha AI.</p>
+        <a href="#" class="cta-button" style="padding: 20px 48px; font-size: 18px;">Get Started Today</a>
+    </section>
+
+    <footer>
+        <div class="footer-logo">🧠 Sparsha AI</div>
+        <p class="copyright">&copy; 2026 Sparsha Clinical Systems. All rights reserved.</p>
+    </footer>
+
+</body>
+</html>

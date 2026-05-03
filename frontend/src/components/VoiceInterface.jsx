@@ -88,7 +88,7 @@ function ThoughtTicker() {
 
 export default function VoiceInterface() {
   const [vapiPublicKey] = useState(import.meta.env.VITE_VAPI_PUBLIC_KEY || '');
-  const { connecting, callActive, aiSpeaking, thinking, messages, startCall, endCall, injectMessage, error: vapiError } = useVapiVoice({ publicKey: vapiPublicKey });
+  const { connecting, callActive, aiSpeaking, thinking, messages, startCall, endCall, injectMessage, say, error: vapiError } = useVapiVoice({ publicKey: vapiPublicKey });
 
   // ── Always-On Wake Word Integration ─────────────────────────────────────
   // Only enable when NOT active and NOT connecting to avoid mic contention
@@ -134,15 +134,64 @@ export default function VoiceInterface() {
   }, []);
 
   // ── Handlers ───────────────────────────────────────────────────────────
+  const [ambulances, setAmbulances] = useState([]);
+  const acknowledgedIds = useRef(new Set());
+  
+  useEffect(() => {
+    const evtSource = new EventSource('/api/alerts/stream');
+    evtSource.onmessage = (e) => {
+      try {
+        const alerts = JSON.parse(e.data);
+        if (Array.isArray(alerts)) {
+          // Track Ambulances
+          setAmbulances(alerts.filter(a => a.room_number === 'ENTRANCE' && a.status === 'pending'));
+          
+          // Voice Feedback
+          alerts.forEach(a => {
+            if (a.status === 'acknowledged' && !acknowledgedIds.current.has(a.id)) {
+              acknowledgedIds.current.add(a.id);
+              say(`The team has responded and is on the way to Room ${a.room_number}.`);
+            }
+          });
+        }
+      } catch (err) { console.error(err); }
+    };
+    return () => evtSource.close();
+  }, [injectMessage]);
+
   const triggerGlobalAlert = async () => {
     try { await fetch('/api/trigger-emergency', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'CRITICAL_ALERT' }) }); } catch (err) {}
   };
 
-  const handleVisionUpload = (files) => {
+  const [visionData, setVisionData] = useState({ finding: 'Scanning...', analysis: 'AI is processing clinical imagery...', recommendation: 'Awaiting results...' });
+
+  const handleVisionUpload = async (files) => {
     if (files && files[0]) {
+      const file = files[0];
       const reader = new FileReader();
-      reader.onload = (e) => { setVisionImage(e.target.result); setIsVisionActive(true); };
-      reader.readAsDataURL(files[0]);
+      reader.onload = (e) => { 
+        setVisionImage(e.target.result); 
+        setIsVisionActive(true); 
+        setVisionData({ finding: 'AI Scanning...', analysis: 'Analyzing clinical patterns...', recommendation: 'Consulting Neural Mesh...' });
+      };
+      reader.readAsDataURL(file);
+
+      const formData = new FormData();
+      formData.append('image', file);
+      try {
+        const res = await fetch('/api/voice/vision', { method: 'POST', body: formData });
+        const data = await res.json();
+        if (data.analysis) {
+          setVisionData({
+            finding: "Clinical Observation Ready",
+            analysis: data.analysis,
+            recommendation: "Review findings and confirm emergency triage status."
+          });
+          say(data.analysis);
+        }
+      } catch (err) {
+        setVisionData({ finding: 'Analysis Error', analysis: 'Could not reach vision engine.', recommendation: 'Verify connection.' });
+      }
     }
   };
 
@@ -213,6 +262,53 @@ export default function VoiceInterface() {
           </div>
           <Status callActive={callActive} aiSpeaking={aiSpeaking} thinking={thinking} wakeListening={wakeListening} lastTranscript={lastTranscript} />
           <ThoughtTicker />
+
+          {/* ── LIVE AMBULANCE RADAR (Always Visible) ───────────────────── */}
+          <div style={{ 
+            width: '100%', maxWidth: 700, marginTop: 20, 
+            background: '#fff', borderRadius: 24, padding: '20px 24px', 
+            boxShadow: '0 10px 40px rgba(0,0,0,0.05)', border: `1px solid ${C.border}`,
+            position: 'relative', overflow: 'hidden'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: ambulances.length > 0 ? 16 : 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <span style={{ fontSize: 24 }}>🚑</span>
+                <span style={{ fontWeight: 800, fontSize: 14, fontFamily: "'Outfit', sans-serif", letterSpacing: '0.05em', color: ambulances.length > 0 ? '#2563eb' : C.text }}>
+                  LIVE AMBULANCE RADAR
+                </span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ width: 8, height: 8, borderRadius: '50%', background: ambulances.length > 0 ? '#2563eb' : '#16a34a', animation: 'softPulse 2s infinite' }} />
+                <span style={{ fontSize: 10, fontWeight: 800, color: C.muted }}>
+                  {ambulances.length > 0 ? 'INBOUND TRAFFIC' : 'MONITORING CLEAR'}
+                </span>
+              </div>
+            </div>
+
+            {ambulances.length > 0 ? (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
+                {ambulances.map(a => (
+                  <div key={a.id} style={{ 
+                    background: '#f8fafc', padding: '12px 16px', borderRadius: 16, 
+                    border: `1px solid ${parseFloat(a.distance) <= 1.0 ? '#fee2e2' : C.border}`,
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+                  }}>
+                    <div>
+                      <div style={{ fontSize: 9, fontWeight: 800, color: C.muted, textTransform: 'uppercase' }}>ETA / DISTANCE</div>
+                      <div style={{ fontSize: 16, fontWeight: 800, color: C.text }}>{a.eta} MIN / {a.distance} KM</div>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontSize: 9, fontWeight: 800, color: (parseFloat(a.distance) <= 1.0) ? C.red : '#2563eb' }}>
+                        {(parseFloat(a.distance) <= 1.0) ? '• INBOUND' : '• APPROACHING'}
+                      </div>
+                      <div style={{ fontSize: 12, fontWeight: 700 }}>ENTRANCE</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </div>
+          {/* ─────────────────────────────────────────────────────────── */}
           <div style={{ width: '100%', maxWidth: 700, marginTop: 30 }}>
             <MultimodalInput 
               messages={messages.map(m => ({ role: m.role, content: m.text }))}
@@ -257,15 +353,15 @@ export default function VoiceInterface() {
                  <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 20 }}>
                     <div style={{ borderLeft: `4px solid ${C.red}`, paddingLeft: 16 }}>
                        <span style={{ fontSize: 10, fontWeight: 900, color: C.red, textTransform: 'uppercase' }}>Key Finding</span>
-                       <p style={{ margin: '4px 0', fontSize: 15, fontWeight: 600 }}>Acute Cardiac ST-Elevation Detected</p>
+                       <p style={{ margin: '4px 0', fontSize: 15, fontWeight: 600 }}>{visionData.finding}</p>
                     </div>
                     <div style={{ borderLeft: `4px solid ${C.blue}`, paddingLeft: 16 }}>
                        <span style={{ fontSize: 10, fontWeight: 900, color: C.blue, textTransform: 'uppercase' }}>Analysis</span>
-                       <p style={{ margin: '4px 0', fontSize: 13, color: C.text, lineHeight: 1.6 }}>The uploaded ECG strip shows clear ST-segment elevation in leads V2-V4. This pattern is highly suggestive of an acute anterior wall myocardial infarction.</p>
+                       <p style={{ margin: '4px 0', fontSize: 13, color: C.text, lineHeight: 1.6 }}>{visionData.analysis}</p>
                     </div>
                     <div style={{ borderLeft: `4px solid ${C.green}`, paddingLeft: 16 }}>
                        <span style={{ fontSize: 10, fontWeight: 900, color: C.green, textTransform: 'uppercase' }}>Recommendation</span>
-                       <p style={{ margin: '4px 0', fontSize: 13, color: C.text, lineHeight: 1.6 }}>1. Trigger Code Blue immediately.<br/>2. Prepare Cath Lab for emergency PCI.<br/>3. Administer ASA 325mg and Nitroglycerin.</p>
+                       <p style={{ margin: '4px 0', fontSize: 13, color: C.text, lineHeight: 1.6 }}>{visionData.recommendation}</p>
                     </div>
                  </div>
                  <button onClick={() => setIsVisionActive(false)} style={{ marginTop: 30, background: '#1a1a2e', color: '#fff', border: 'none', padding: '14px', borderRadius: 16, fontWeight: 800, cursor: 'pointer' }}>CLOSE ANALYSIS</button>

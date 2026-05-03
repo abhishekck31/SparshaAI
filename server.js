@@ -12,16 +12,52 @@ const PORT = process.env.PORT || 8080;
 // ── Alerts / SSE State ────────────────────────────────────────────────────────
 const activeAlerts = [];
 const sseClients = new Set();
+const NGROK_RECEIVER_URL = 'https://crudeness-good-unwind.ngrok-free.dev';
 
-function broadcastAlerts() {
-  const data = JSON.stringify({ type: 'CRITICAL_ALERT', timestamp: new Date() });
+// ── Hospital Inventory ────────────────────────────────────────────────────────
+const BED_INVENTORY = {
+  general: 12,
+  icu: 4,
+  emergency: 2,
+  ventilators: 3
+};
+
+const processedAlertIds = new Set();
+
+async function broadcastAlerts(alertData = {}) {
+  // ECHO SHIELD: If we've already handled this specific alert ID, ignore it.
+  if (alertData.id && processedAlertIds.has(alertData.id)) {
+    return; 
+  }
+  if (alertData.id) processedAlertIds.add(alertData.id);
+
+  // PREVENT INFINITE LOOP: Don't re-forward if this came FROM an ngrok bridge
+  if (!alertData.fromNgrok) {
+    try {
+      fetch(`${NGROK_RECEIVER_URL}/api/alerts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...alertData, fromNgrok: true })
+      }).catch(() => {});
+    } catch (e) {}
+  }
+
+  // Local Broadcast
+  const data = JSON.stringify(activeAlerts);
   for (const res of sseClients) {
     res.write(`data: ${data}\n\n`);
   }
 }
 
-app.post('/api/trigger-emergency', (req, res) => {
+app.post('/api/alerts/clear', (req, res) => {
+  activeAlerts.length = 0;
+  processedAlertIds.clear();
   broadcastAlerts();
+  res.json({ success: true });
+});
+
+app.post('/api/trigger-emergency', async (req, res) => {
+  await broadcastAlerts(req.body);
   res.status(200).json({ success: true });
 });
 
@@ -205,6 +241,39 @@ app.post('/api/voice/transcribe', upload.single('audio'), async (req, res) => {
   }
 });
 
+// ── POST /api/voice/vision ────────────────────────────────────────────────────
+app.post('/api/voice/vision', upload.single('image'), async (req, res) => {
+  const filePath = req.file?.path;
+  if (!filePath) return res.status(400).json({ error: 'No image received.' });
+
+  try {
+    const base64Image = fs.readFileSync(filePath, { encoding: 'base64' });
+    const completion = await groq.chat.completions.create({
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: "You are a senior clinical consultant. Analyze this medical image (ECG, wound, or X-ray) and provide a 2-sentence professional observation. Lead with 'I have analyzed the image...'" },
+            {
+              type: "image_url",
+              image_url: { url: `data:image/jpeg;base64,${base64Image}` },
+            },
+          ],
+        },
+      ],
+      model: "llama-3.2-11b-vision-preview",
+    });
+
+    const analysis = completion.choices[0].message.content;
+    return res.json({ analysis });
+  } catch (err) {
+    console.error('[vision]', err.message);
+    return res.status(500).json({ error: 'Vision analysis failed.' });
+  } finally {
+    if (filePath) fs.unlink(filePath, () => {});
+  }
+});
+
 // ── POST /api/voice/process ───────────────────────────────────────────────────
 app.post('/api/voice/process', async (req, res) => {
   const { text, language, patient_id, room } = req.body;
@@ -310,7 +379,7 @@ app.post('/api/vapi/webhook', async (req, res) => {
 
       const alert = { id: Date.now().toString(), staff_name, room_number, reason, patient_id, vitals, situation, risk, priority, status: 'pending', response: null };
       activeAlerts.unshift(alert);
-      broadcastAlerts();
+      broadcastAlerts(alert);
 
       return res.json({
         result: `Alert sent to ${staff_name} in room ${room_number}. Waiting for their response.`,
@@ -328,6 +397,26 @@ app.post('/api/vapi/webhook', async (req, res) => {
       return res.json({
         result: `Room ${room_number} vitals: Heart Rate ${hr} bpm, Blood Pressure ${sys} over ${dia} mmHg, SpO2 ${sp} percent, Temperature ${tmp} degrees Fahrenheit.`,
       });
+    }
+
+    if (name === 'get_hospital_statistics') {
+      const { query } = parameters ?? {};
+      const { exec } = require('child_process');
+      console.log(`[DATA] Querying Clinical Brain: ${query}`);
+      exec(`python clinical_brain.py "${query}"`, (error, stdout) => {
+        let result = "I'm unable to access the statistics right now.";
+        if (!error && stdout.includes('RESULT:')) {
+          result = stdout.split('RESULT:')[1].trim();
+        }
+        res.json({ result: `According to the records: ${result}` });
+      });
+      return;
+    }
+
+    if (name === 'get_beds') {
+      const { type = 'general' } = parameters ?? {};
+      const count = BED_INVENTORY[type.toLowerCase()] || 0;
+      return res.json({ result: `We currently have ${count} ${type} beds available.` });
     }
   }
 
@@ -364,10 +453,18 @@ app.get('/api/alerts/stream', (req, res) => {
 // ── POST /api/alerts ──────────────────────────────────────────────────────────
 // Called by client-side tool invocation
 app.post('/api/alerts', (req, res) => {
-  const { staff_name, room_number, reason } = req.body;
-  const alert = { id: Date.now().toString(), staff_name, room_number, reason, status: 'pending', response: null };
+  const { staff_name, room_number, reason, fromNgrok } = req.body;
+  const alert = { 
+    id: Date.now().toString(), 
+    staff_name, 
+    room_number, 
+    reason, 
+    status: 'pending', 
+    response: null,
+    fromNgrok: !!fromNgrok // Preserve the loop-breaker flag
+  };
   activeAlerts.unshift(alert);
-  broadcastAlerts();
+  broadcastAlerts(alert);
   res.json({ success: true, alert });
 });
 
@@ -376,8 +473,8 @@ app.post('/api/alerts/:id/ack', (req, res) => {
   const alert = activeAlerts.find(a => a.id === req.params.id);
   if (alert) {
     alert.status = 'acknowledged';
-    alert.response = req.body.response || 'I am on the way.';
-    broadcastAlerts();
+    alert.response = req.body.response || 'The team has responded and is on the way.';
+    broadcastAlerts(alert);
     res.json({ success: true, alert });
   } else {
     res.status(404).json({ error: 'Not found' });
