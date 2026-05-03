@@ -1,14 +1,16 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 
 const WAKE_PHRASES = [
-  'hey sparsha', 'hi sparsha', 'hello sparsha',
-  'hey sparsh',  'a sparsha',  'sparsha',
-  'ok sparsha',  'okay sparsha',
-  'hey sparta',  'hey sparse',  'hey sparsa',
+  'sparsha', 'sparsh', 'sparsa', 'spartha', 'spartia',
+  'hey sparsha', 'hi sparsha', 'hello sparsha', 'okay sparsha',
+  'hey sparse', 'hey sparks', 'hey sparta', 'hey pass',
+  'hey pasha', 'hey parsha', 'hey barsha', 'hi sparsh',
+  'hey spar', 'hey star', 'hey spa', 'hey ashar',
 ];
 
 function matchesWakeWord(transcript) {
   const t = transcript.toLowerCase().trim();
+  // Match if ANY part of the transcript contains our target words
   return WAKE_PHRASES.some((p) => t.includes(p));
 }
 
@@ -16,6 +18,7 @@ export default function useWakeWord({ onDetected, enabled, lang = 'en-US' }) {
   // wakeListening is TRUE for the entire duration enabled=true.
   // It does NOT toggle off during Chrome's normal recognition restart cycle.
   const [wakeListening, setWakeListening] = useState(false);
+  const [lastTranscript, setLastTranscript] = useState('');
 
   const recRef        = useRef(null);
   const enabledRef    = useRef(enabled);
@@ -35,6 +38,7 @@ export default function useWakeWord({ onDetected, enabled, lang = 'en-US' }) {
     }
     // Only hide the indicator when truly disabled
     setWakeListening(false);
+    setLastTranscript('');
   }, []);
 
   const startRec = useCallback(() => {
@@ -62,31 +66,31 @@ export default function useWakeWord({ onDetected, enabled, lang = 'en-US' }) {
 
     rec.onresult = (event) => {
       for (let i = event.resultIndex; i < event.results.length; i++) {
-        for (let j = 0; j < event.results[i].length; j++) {
-          if (matchesWakeWord(event.results[i][j].transcript)) {
-            rec.abort();
-            // Don't touch wakeListening here — caller will set enabled=false
-            onDetectedRef.current?.();
-            return;
-          }
+        const transcript = event.results[i][0].transcript;
+        setLastTranscript(transcript);
+        if (matchesWakeWord(transcript)) {
+          console.log('[WAKE] Match found! Strictly releasing mic for Vapi...');
+          rec.onend = null; // Unbind onend to prevent auto-restart
+          try { rec.stop(); } catch (_) { rec.abort(); } 
+          onDetectedRef.current?.();
+          return;
         }
       }
     };
 
     rec.onerror = (e) => {
       starting.current = false;
+      console.error('[WAKE] Speech Error:', e.error);
       if (e.error === 'not-allowed') { stopRec(); return; }
-      // All other errors (no-speech, network, aborted) → let onend restart
+      // Aggressive recovery for other errors
+      restartTimer.current = setTimeout(startRec, 1000);
     };
 
     rec.onend = () => {
       starting.current = false;
       if (enabledRef.current) {
-        // Chrome ended the session normally — restart silently.
-        // DO NOT setWakeListening(false) here; the indicator stays lit.
-        restartTimer.current = setTimeout(startRec, 250);
-      } else {
-        setWakeListening(false);
+        // Force restart if ended normally
+        restartTimer.current = setTimeout(startRec, 300);
       }
     };
 
@@ -107,5 +111,5 @@ export default function useWakeWord({ onDetected, enabled, lang = 'en-US' }) {
     return stopRec;
   }, [enabled]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  return { wakeListening };
+  return { wakeListening, lastTranscript };
 }

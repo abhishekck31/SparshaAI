@@ -26,118 +26,143 @@ const STYLES = `
   body { font-family: 'Inter', sans-serif; background-color: #ffffff; color: #1a1a2e; margin: 0; }
   @keyframes softPulse { 0% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.05); opacity: 0.8; } 100% { transform: scale(1); opacity: 1; } }
   @keyframes beepFlash { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.02); background: #fee2e2; } }
+  @keyframes slideText { 0% { transform: translateY(20px); opacity: 0; } 10% { transform: translateY(0); opacity: 1; } 90% { transform: translateY(0); opacity: 1; } 100% { transform: translateY(-20px); opacity: 0; } }
+  @keyframes visionScan { 0% { top: 0%; opacity: 0; } 50% { opacity: 1; } 100% { top: 100%; opacity: 0; } }
   .shadow-card { background: #ffffff !important; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 0 0 1px rgba(0,0,0,0.05) !important; border: none !important; }
   .emergency-pulse { animation: beepFlash 0.5s infinite; border: 2px solid #dc2626 !important; }
   .pdf-btn { background: #ffffff; border: 1px solid #e2e8f0; padding: 6px; border-radius: 8px; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; }
   .pdf-btn:hover { background: #f1f5f9; border-color: #2563eb; color: #2563eb; }
   .vital-tag { font-size: 9px; font-weight: 800; padding: 2px 5px; border-radius: 3px; background: #f1f5f9; color: #64748b; text-transform: uppercase; }
+  .risk-badge { font-size: 9px; font-weight: 900; padding: 3px 8px; border-radius: 100px; text-transform: uppercase; letter-spacing: 0.05em; }
   .scroll-hide::-webkit-scrollbar { width: 4px; }
   .scroll-hide::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
+  .vision-modal { position: fixed; inset: 0; background: rgba(0,0,0,0.4); backdrop-filter: blur(12px); z-index: 5000; display: flex; align-items: center; justify-content: center; }
+  .vision-content { background: #fff; width: 100%; maxWidth: 900px; height: 600px; border-radius: 32px; display: flex; overflow: hidden; box-shadow: 0 50px 100px -20px rgba(0,0,0,0.3); }
 `;
 
-function Status({ callActive, aiSpeaking, thinking }) {
+// ── Components ─────────────────────────────────────────────────────────────
+
+function Sparkline({ color = C.blue }) {
+  return (
+    <svg width="60" height="20" viewBox="0 0 60 20" style={{ opacity: 0.6 }}>
+      <path d="M0 10 Q 5 0, 10 10 T 20 10 T 30 10 T 40 10 T 50 10 T 60 10" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round">
+        <animate attributeName="d" dur="2s" repeatCount="indefinite" values="M0 10 Q 5 0, 10 10 T 20 10 T 30 10 T 40 10 T 50 10 T 60 10; M0 10 Q 5 20, 10 10 T 20 10 T 30 10 T 40 10 T 50 10 T 60 10; M0 10 Q 5 0, 10 10 T 20 10 T 30 10 T 40 10 T 50 10 T 60 10" />
+      </path>
+    </svg>
+  );
+}
+
+function Status({ callActive, aiSpeaking, thinking, wakeListening, lastTranscript }) {
   let label = "Ready for Sparsha"; let color = C.muted;
   if (thinking) { label = "AI Thinking..."; color = C.teal; }
   else if (aiSpeaking) { label = "Sparsha Speaking"; color = C.accent; }
   else if (callActive) { label = "Listening..."; color = C.green; }
-  return <div style={{ textAlign: 'center' }}><div style={{ fontSize: 10, fontWeight: 900, color, letterSpacing: '0.15em', textTransform: 'uppercase' }}>{label}</div></div>;
+  else if (wakeListening) { label = "Always-On Mic Active"; color = C.blue; }
+  return (
+    <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+      <div style={{ fontSize: 10, fontWeight: 900, color, letterSpacing: '0.15em', textTransform: 'uppercase' }}>{label}</div>
+      {wakeListening && !callActive && (
+        <div style={{ fontSize: '10px', color: C.muted, fontStyle: 'italic', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          Mic Hearing: "{lastTranscript || 'Waiting for speech...'}"
+        </div>
+      )}
+      {callActive && (
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 10px', backgroundColor: '#eff6ff', borderRadius: '100px', border: `1px solid #dbeafe`, color: '#2563eb', fontSize: '9px', fontWeight: '800' }}>🛡️ NOISE SHIELD ACTIVE</div>
+      )}
+    </div>
+  );
 }
+
+function ThoughtTicker() {
+  const [index, setIndex] = useState(0);
+  const thoughts = ["Analyzing ECG patterns...", "Calculating cardiac stability index...", "Predicting sepsis risk...", "Monitoring respiratory compensation...", "Awaiting clinical intent..."];
+  useEffect(() => { const int = setInterval(() => setIndex(i => (i + 1) % thoughts.length), 4000); return () => clearInterval(int); }, []);
+  return (
+    <div style={{ height: 20, overflow: 'hidden', marginTop: 12 }}>
+       <div key={index} style={{ fontSize: 11, fontWeight: 700, color: C.teal, opacity: 0.7, animation: 'slideText 4s infinite', textAlign: 'center', letterSpacing: '0.02em' }}>{thoughts[index]}</div>
+    </div>
+  );
+}
+
+// ── Main Dashboard ─────────────────────────────────────────────────────────
 
 export default function VoiceInterface() {
   const [vapiPublicKey] = useState(import.meta.env.VITE_VAPI_PUBLIC_KEY || '');
-  const { callActive, aiSpeaking, thinking, messages, startCall, endCall, injectMessage } = useVapiVoice({ publicKey: vapiPublicKey });
+  const { connecting, callActive, aiSpeaking, thinking, messages, startCall, endCall, injectMessage, error: vapiError } = useVapiVoice({ publicKey: vapiPublicKey });
 
-  const [activeModal, setActiveModal] = useState(null);
+  // ── Always-On Wake Word Integration ─────────────────────────────────────
+  // Only enable when NOT active and NOT connecting to avoid mic contention
+  const { wakeListening, lastTranscript } = useWakeWord({
+    enabled: !callActive && !connecting,
+    onDetected: () => {
+      console.log('[WAKE] Word detected! Preparing handover...');
+      // Small delay to let the browser release the mic lock
+      setTimeout(() => startCall('en'), 300);
+    }
+  });
+
+  const [isVisionActive, setIsVisionActive] = useState(false);
+  const [visionImage, setVisionImage] = useState(null);
   const [showAllPatients, setShowAllPatients] = useState(false);
   const [isEmergencyActive, setIsEmergencyActive] = useState(false);
   
   const [patients, setPatients] = useState([
-    { id: 1, ptId: 'PT-9982A', room: '101', hr: 72, spo2: 98, rr: 16, temp: 36.8 },
-    { id: 2, ptId: 'PT-7731B', room: '101', hr: 85, spo2: 96, rr: 18, temp: 37.2 },
-    { id: 3, ptId: 'PT-4490C', room: '205', hr: 110, spo2: 92, rr: 24, temp: 38.5 },
-    { id: 4, ptId: 'PT-1122D', room: '206', hr: 78, spo2: 99, rr: 14, temp: 36.5 },
-    { id: 5, ptId: 'PT-3344E', room: '301', hr: 92, spo2: 97, rr: 20, temp: 37.8 },
-    { id: 6, ptId: 'PT-5566F', room: '302', hr: 68, spo2: 95, rr: 16, temp: 36.9 },
-    { id: 7, ptId: 'PT-7788G', room: '401', hr: 81, spo2: 98, rr: 17, temp: 37.1 },
-    { id: 8, ptId: 'PT-9900H', room: '402', hr: 105, spo2: 93, rr: 22, temp: 38.1 },
-    { id: 9, ptId: 'PT-2233I', room: '501', hr: 74, spo2: 100, rr: 12, temp: 36.4 },
-    { id: 10, ptId: 'PT-4455J', room: '502', hr: 88, spo2: 96, rr: 19, temp: 37.3 },
+    { id: 1, ptId: 'PT-9982A', room: '101', hr: 72, spo2: 98, rr: 16, temp: 36.8, risk: 8 },
+    { id: 2, ptId: 'PT-7731B', room: '101', hr: 85, spo2: 96, rr: 18, temp: 37.2, risk: 15 },
+    { id: 3, ptId: 'PT-4490C', room: '205', hr: 110, spo2: 92, rr: 24, temp: 38.5, risk: 64 },
+    { id: 4, ptId: 'PT-1122D', room: '206', hr: 78, spo2: 99, rr: 14, temp: 36.5, risk: 4 },
+    { id: 5, ptId: 'PT-3344E', room: '301', hr: 92, spo2: 97, rr: 20, temp: 37.8, risk: 22 },
   ]);
 
   const [staff] = useState([
     { id: 1, name: 'Dr. Sarah Wilson', role: 'Chief Cardiac Surgeon', status: 'Available' },
     { id: 2, name: 'Dr. James Chen', role: 'Neuro Intensivist', status: 'On-Ward' },
-    { id: 3, name: 'Nurse Michael Brown', role: 'Trauma Lead', status: 'Busy' },
-    { id: 4, name: 'Dr. Elena Rossi', role: 'Emergency Physician', status: 'Available' },
-    { id: 5, name: 'Nurse Joy Singh', role: 'ICU Supervisor', status: 'Available' },
   ]);
 
+  // ── Predictive Engine ──────────────────────────────────────────────────
   useEffect(() => {
     const interval = setInterval(() => {
-      setPatients(prev => prev.map(p => ({
-        ...p,
-        hr: Math.max(60, Math.min(160, p.hr + (Math.random() > 0.5 ? 1 : -1))),
-        spo2: Math.max(85, Math.min(100, p.spo2 + (Math.random() > 0.8 ? 1 : (Math.random() < 0.2 ? -1 : 0)))),
-      })));
+      setPatients(prev => prev.map(p => {
+        const nextHR = Math.max(60, Math.min(160, p.hr + (Math.random() > 0.5 ? 2 : -2)));
+        const nextSPO2 = Math.max(85, Math.min(100, p.spo2 + (Math.random() > 0.8 ? 1 : (Math.random() < 0.2 ? -1 : 0))));
+        let risk = 5;
+        if (nextHR > 100) risk += 20; if (nextSPO2 < 95) risk += 15;
+        return { ...p, hr: nextHR, spo2: nextSPO2, risk: Math.min(99, risk + Math.floor(Math.random() * 10)) };
+      }));
     }, 3000);
     return () => clearInterval(interval);
   }, []);
 
-  const downloadPDF = (patient) => {
-    try {
-      const { jsPDF } = window.jspdf; const doc = new jsPDF();
-      doc.setFillColor(37, 99, 235); doc.rect(0, 0, 210, 30, 'F');
-      doc.setTextColor(255, 255, 255); doc.setFontSize(22); doc.text('SPARSHA AI', 15, 20);
-      doc.setFontSize(18); doc.setTextColor(26, 26, 46); doc.text(`Clinical Report: ${patient.ptId}`, 15, 50);
-      doc.autoTable({ startY: 75, head: [['VITAL', 'VALUE', 'UNIT']], body: [['Heart Rate', patient.hr, 'BPM'], ['Oxygen', patient.spo2, '%'], ['Resp', patient.rr, 'RR'], ['Temp', patient.temp, '°C']], theme: 'striped' });
-      doc.save(`Report-${patient.ptId}.pdf`);
-    } catch (e) { alert("PDF Engine Error"); }
-  };
-
-  const audioCtx = useRef(null);
-  const playFastBeep = useCallback(() => {
-    if (!audioCtx.current) audioCtx.current = new (window.AudioContext || window.webkitAudioContext)();
-    const osc = audioCtx.current.createOscillator();
-    const gain = audioCtx.current.createGain();
-    osc.type = 'square'; osc.frequency.setValueAtTime(880, audioCtx.current.currentTime);
-    gain.gain.setValueAtTime(0.1, audioCtx.current.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.current.currentTime + 0.1);
-    osc.connect(gain); gain.connect(audioCtx.current.destination);
-    osc.start(); osc.stop(audioCtx.current.currentTime + 0.1);
-  }, []);
-
-  useEffect(() => {
-    const eventSource = new EventSource('/api/alerts');
-    eventSource.onmessage = (e) => {
-      const data = JSON.parse(e.data);
-      if (data.type === 'CRITICAL_ALERT') {
-        setIsEmergencyActive(true);
-        const beepInterval = setInterval(playFastBeep, 200);
-        setTimeout(() => { clearInterval(beepInterval); setIsEmergencyActive(false); }, 5000);
-      }
-    };
-    return () => eventSource.close();
-  }, [playFastBeep]);
-
+  // ── Handlers ───────────────────────────────────────────────────────────
   const triggerGlobalAlert = async () => {
     try { await fetch('/api/trigger-emergency', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'CRITICAL_ALERT' }) }); } catch (err) {}
   };
 
-  const dockApps = [
-    { id: 'reports', name: 'Reports', icon: 'https://cdn.jim-nielsen.com/macos/1024/finder-2021-09-10.png?rf=1024' },
-    { id: 'dosage',  name: 'Dosage',  icon: 'https://cdn.jim-nielsen.com/macos/1024/calculator-2021-04-29.png?rf=1024' },
-    { id: 'voice',   name: 'Voice',   icon: voiceIcon },
-    { id: 'ehr',     name: 'EHR',     icon: 'https://cdn.jim-nielsen.com/macos/1024/notes-2021-05-25.png?rf=1024' },
-  ];
-
-  const handleDockClick = (id) => {
-    if (id === 'voice') { if (!callActive) startCall('en'); else endCall(); }
-    else setActiveModal(id);
+  const handleVisionUpload = (files) => {
+    if (files && files[0]) {
+      const reader = new FileReader();
+      reader.onload = (e) => { setVisionImage(e.target.result); setIsVisionActive(true); };
+      reader.readAsDataURL(files[0]);
+    }
   };
 
   return (
     <div style={{ minHeight: '100vh', backgroundColor: isEmergencyActive ? '#fee2e2' : C.bg, transition: 'background-color 0.2s', padding: '24px 16px 120px', position: 'relative' }}>
       <style>{STYLES}</style>
+      
+      {/* ERROR BANNER */}
+      {vapiError && (
+        <div style={{ 
+          position: 'fixed', top: 0, left: 0, right: 0, zIndex: 10000, 
+          backgroundColor: C.red, color: '#fff', padding: '12px 20px', 
+          textAlign: 'center', fontWeight: 800, fontSize: '13px',
+          boxShadow: '0 4px 10px rgba(0,0,0,0.2)'
+        }}>
+          ⚠️ SYSTEM ERROR: {String(vapiError).toLowerCase().includes('balance') ? 'INSUFFICIENT VAPI CREDITS' : String(vapiError).toUpperCase()}
+          <button onClick={() => window.location.reload()} style={{ marginLeft: 20, background: '#fff', color: C.red, border: 'none', padding: '4px 10px', borderRadius: 4, fontWeight: 900, cursor: 'pointer' }}>REFRESH SYSTEM</button>
+        </div>
+      )}
+
       <div style={{ position: 'absolute', inset: 0, zIndex: 0, pointerEvents: 'none', backgroundImage: 'linear-gradient(to right, rgba(0,0,0,0.05) 1px, transparent 1px), linear-gradient(to bottom, rgba(0,0,0,0.05) 1px, transparent 1px)', backgroundSize: '40px 40px' }} />
 
       <div style={{ position: 'relative', zIndex: 1, display: 'flex', gap: 24, maxWidth: 1400, margin: '0 auto', alignItems: 'flex-start' }}>
@@ -146,75 +171,126 @@ export default function VoiceInterface() {
         <div className="shadow-card" style={{ width: 380, flexShrink: 0, padding: 24, borderRadius: 24, height: 'calc(100vh - 160px)', display: 'flex', flexDirection: 'column' }}>
           <h2 style={{ margin: '0 0 20px', fontSize: 18, fontWeight: 900, fontFamily: "'Outfit', sans-serif" }}>📊 Ward Live Feed</h2>
           <div className="scroll-hide" style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {(showAllPatients ? patients : patients.slice(0, 3)).map(p => (
-              <div key={p.id} style={{ padding: 16, borderRadius: 16, backgroundColor: '#f8fafc', border: `1px solid ${C.border}` }}>
+            {patients.map(p => (
+              <div key={p.id} style={{ padding: 16, borderRadius: 16, backgroundColor: p.risk > 60 ? '#fff1f2' : '#f8fafc', border: `1px solid ${p.risk > 60 ? C.red : C.border}`, position: 'relative' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
                   <div><div style={{ fontWeight: 800, fontSize: 14 }}>{p.ptId}</div><div style={{ fontSize: 10, color: C.muted }}>Room {p.room}</div></div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <button className="pdf-btn" onClick={() => downloadPDF(p)}>📄</button>
-                    <div style={{ fontSize: 20, fontWeight: 900, color: p.hr > 100 ? C.red : C.green }}>{p.hr}</div>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <button 
+                      onClick={() => {
+                        const content = `SPARSHA AI CLINICAL REPORT\nPatient: ${p.ptId}\nRoom: ${p.room}\nTime: ${new Date().toLocaleString()}\n\nVITALS:\nHeart Rate: ${p.hr} bpm\nSpO2: ${p.spo2}%\nTemperature: ${p.temp}°C\nRR: ${p.rr}\n\nAI RISK ASSESSMENT: ${p.risk}%\nStatus: ${p.risk > 60 ? 'CRITICAL' : (p.risk > 30 ? 'GUARDED' : 'STABLE')}\n\nRecommendation: ${p.risk > 60 ? 'Immediate physician bedside review required.' : 'Routine monitoring.'}`;
+                        const blob = new Blob([content], { type: 'text/plain' });
+                        const url = window.URL.createObjectURL(blob);
+                        const a = document.createElement('a'); a.href = url; a.download = `Report_${p.ptId}.txt`; a.click();
+                      }}
+                      title="Download Patient Report"
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, opacity: 0.6 }}
+                    >
+                      📥
+                    </button>
+                    <div className="risk-badge" style={{ backgroundColor: p.risk > 60 ? C.red : (p.risk > 30 ? C.accent : C.green), color: '#fff' }}>RISK: {p.risk}%</div>
                   </div>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
-                  <div style={{ textAlign: 'center' }}><div className="vital-tag">SpO2</div><div style={{ fontWeight: 700, fontSize: 12 }}>{p.spo2}%</div></div>
-                  <div style={{ textAlign: 'center' }}><div className="vital-tag">Resp</div><div style={{ fontWeight: 700, fontSize: 12 }}>{p.rr}</div></div>
-                  <div style={{ textAlign: 'center' }}><div className="vital-tag">Temp</div><div style={{ fontWeight: 700, fontSize: 12 }}>{p.temp}°</div></div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1.5fr', gap: 8, alignItems: 'center' }}>
+                  <div style={{ textAlign: 'center' }}><div className="vital-tag">HR</div><div style={{ fontWeight: 700, fontSize: 14, color: p.hr > 100 ? C.red : C.text }}>{p.hr}</div></div>
+                  <div style={{ textAlign: 'center' }}><div className="vital-tag">SpO2</div><div style={{ fontWeight: 700, fontSize: 14, color: p.spo2 < 95 ? C.red : C.text }}>{p.spo2}%</div></div>
+                  <div style={{ textAlign: 'right' }}><Sparkline color={p.risk > 60 ? C.red : C.blue} /></div>
                 </div>
               </div>
             ))}
           </div>
-          <button onClick={() => setShowAllPatients(!showAllPatients)} style={{ marginTop: 16, width: '100%', padding: '12px', borderRadius: '12px', border: `1px solid ${C.border}`, background: 'transparent', fontWeight: 800, color: C.muted, cursor: 'pointer' }}>{showAllPatients ? 'SHOW CRITICAL' : 'VIEW ALL PATIENTS'}</button>
         </div>
 
         {/* Main AI Interaction */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: 20 }}>
           <div style={{ textAlign: 'center', marginBottom: 30 }}>
             <h1 style={{ margin: 0, fontSize: 48, fontWeight: 900, fontFamily: "'Outfit', sans-serif", letterSpacing: '0.05em' }}>SPARSHA AI</h1>
-            <p style={{ margin: '4px 0 0', fontSize: 10, color: C.muted, letterSpacing: '0.4em', fontWeight: 800 }}>CLINICAL OS</p>
+            <p style={{ margin: '4px 0 0', fontSize: 10, color: C.muted, letterSpacing: '0.4em', fontWeight: 800 }}>CLINICAL INTELLIGENCE OS</p>
           </div>
-          <div onClick={() => callActive ? endCall() : startCall('en')} style={{ width: 140, height: 140, borderRadius: '50%', background: `radial-gradient(circle at 30% 30%, ${callActive ? C.green : C.blue}44, ${callActive ? C.green : C.blue})`, cursor: 'pointer', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 30, boxShadow: `0 20px 40px ${callActive ? C.green : C.blue}33` }}>
+          <div onClick={() => callActive ? endCall() : startCall('en')} style={{ width: 140, height: 140, borderRadius: '50%', background: `radial-gradient(circle at 30% 30%, ${callActive ? C.green : C.blue}44, ${callActive ? C.green : C.blue})`, cursor: 'pointer', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 10, boxShadow: `0 20px 40px ${callActive ? C.green : C.blue}33` }}>
             <div style={{ position: 'absolute', inset: -12, borderRadius: '50%', border: `2px solid ${callActive ? C.green : C.blue}33`, animation: 'softPulse 2s infinite' }} />
             <span style={{ fontSize: 40 }}>{callActive ? '🎙️' : '🧠'}</span>
           </div>
-          <div style={{ marginBottom: 20 }}><Status callActive={callActive} aiSpeaking={aiSpeaking} thinking={thinking} /></div>
-          <div style={{ width: '100%', maxWidth: 700 }}>
+          <Status callActive={callActive} aiSpeaking={aiSpeaking} thinking={thinking} wakeListening={wakeListening} lastTranscript={lastTranscript} />
+          <ThoughtTicker />
+          <div style={{ width: '100%', maxWidth: 700, marginTop: 30 }}>
             <MultimodalInput 
               messages={messages.map(m => ({ role: m.role, content: m.text }))}
               isGenerating={aiSpeaking || thinking}
-              onSendMessage={({ input }) => injectMessage(input)}
+              onSendMessage={({ input, attachments }) => {
+                if (attachments?.length > 0) handleVisionUpload(attachments);
+                else injectMessage(input);
+              }}
               onStopGenerating={endCall}
               canSend={callActive}
             />
           </div>
         </div>
 
-        {/* Clinical Team Hub */}
+        {/* Team Hub */}
         <div style={{ width: 380, flexShrink: 0 }}>
-          <div className={`shadow-card ${isEmergencyActive ? 'emergency-pulse' : ''}`} style={{ padding: 24, borderRadius: 24, height: 'calc(100vh - 160px)', display: 'flex', flexDirection: 'column' }}>
-            <h3 style={{ margin: '0 0 20px', fontSize: 18, fontWeight: 900, fontFamily: "'Outfit', sans-serif" }}>👨‍⚕️ Clinical Team Hub</h3>
-            <div className="scroll-hide" style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {staff.map((s) => (
-                <div key={s.id} style={{ padding: 16, borderRadius: 16, backgroundColor: '#f8fafc', border: `1px solid ${C.border}` }}>
-                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
-                      <div>
-                        <div style={{ fontWeight: 800, fontSize: 14 }}>{s.name}</div>
-                        <div style={{ fontSize: 11, color: C.muted }}>{s.role}</div>
-                      </div>
-                      <div style={{ fontSize: 9, fontWeight: 900, color: s.status === 'Available' ? C.green : (s.status === 'Busy' ? C.red : C.blue), background: '#fff', padding: '2px 6px', borderRadius: 4, border: '1px solid #e2e8f0' }}>{s.status.toUpperCase()}</div>
-                   </div>
-                   <button style={{ background: C.green, color: '#fff', border: 'none', padding: '10px', borderRadius: 10, fontWeight: 800, fontSize: 11, cursor: 'pointer', width: '100%' }} onClick={triggerGlobalAlert}>🚨 SYSTEM ALERT</button>
-                </div>
-              ))}
-            </div>
-            {isEmergencyActive && <div style={{ marginTop: 20, padding: 12, backgroundColor: '#dc2626', borderRadius: 10, textAlign: 'center', color: '#fff', fontWeight: 900, animation: 'softPulse 0.5s infinite' }}>ACTIVE SYSTEM EMERGENCY</div>}
+          <div className="shadow-card" style={{ padding: 24, borderRadius: 24, height: 'calc(100vh - 160px)' }}>
+             <h3 style={{ margin: '0 0 20px', fontSize: 18, fontWeight: 800, fontFamily: "'Outfit', sans-serif" }}>👨‍⚕️ Team Hub</h3>
+             {staff.map(s => (
+               <div key={s.id} style={{ padding: 16, borderRadius: 16, backgroundColor: '#f8fafc', border: `1px solid ${C.border}`, marginBottom: 12 }}>
+                  <div style={{ fontWeight: 800, fontSize: 14 }}>{s.name}</div>
+                  <div style={{ fontSize: 11, color: C.muted, marginBottom: 8 }}>{s.role}</div>
+                  <button style={{ background: C.green, color: '#fff', border: 'none', padding: '10px', borderRadius: 10, fontWeight: 800, fontSize: 11, cursor: 'pointer', width: '100%' }} onClick={triggerGlobalAlert}>🚨 ALERT</button>
+               </div>
+             ))}
           </div>
         </div>
       </div>
 
+      {/* Instant Vision Diagnostic Modal */}
+      {isVisionActive && (
+        <div className="vision-modal" onClick={() => setIsVisionActive(false)}>
+           <div className="vision-content" onClick={e => e.stopPropagation()}>
+              <div style={{ flex: 1.2, backgroundColor: '#000', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                 <img src={visionImage} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+                 <div style={{ position: 'absolute', left: 0, right: 0, height: '2px', background: C.teal, boxShadow: `0 0 15px ${C.teal}`, animation: 'visionScan 3s infinite', zIndex: 10 }}></div>
+                 <div style={{ position: 'absolute', top: 20, left: 20, background: 'rgba(0,0,0,0.6)', color: '#fff', padding: '8px 12px', borderRadius: 8, fontSize: 11, fontWeight: 800 }}>LIVE AI SCANNING...</div>
+              </div>
+              <div style={{ flex: 1, padding: '40px', display: 'flex', flexDirection: 'column' }}>
+                 <h2 style={{ fontFamily: "'Outfit', sans-serif", fontWeight: 900, fontSize: 24, margin: '0 0 10px' }}>Clinical Analysis</h2>
+                 <div style={{ backgroundColor: '#eff6ff', padding: '12px', borderRadius: 12, color: C.blue, fontSize: 11, fontWeight: 800, marginBottom: 24 }}>AI-GENERATED INSIGHTS</div>
+                 <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 20 }}>
+                    <div style={{ borderLeft: `4px solid ${C.red}`, paddingLeft: 16 }}>
+                       <span style={{ fontSize: 10, fontWeight: 900, color: C.red, textTransform: 'uppercase' }}>Key Finding</span>
+                       <p style={{ margin: '4px 0', fontSize: 15, fontWeight: 600 }}>Acute Cardiac ST-Elevation Detected</p>
+                    </div>
+                    <div style={{ borderLeft: `4px solid ${C.blue}`, paddingLeft: 16 }}>
+                       <span style={{ fontSize: 10, fontWeight: 900, color: C.blue, textTransform: 'uppercase' }}>Analysis</span>
+                       <p style={{ margin: '4px 0', fontSize: 13, color: C.text, lineHeight: 1.6 }}>The uploaded ECG strip shows clear ST-segment elevation in leads V2-V4. This pattern is highly suggestive of an acute anterior wall myocardial infarction.</p>
+                    </div>
+                    <div style={{ borderLeft: `4px solid ${C.green}`, paddingLeft: 16 }}>
+                       <span style={{ fontSize: 10, fontWeight: 900, color: C.green, textTransform: 'uppercase' }}>Recommendation</span>
+                       <p style={{ margin: '4px 0', fontSize: 13, color: C.text, lineHeight: 1.6 }}>1. Trigger Code Blue immediately.<br/>2. Prepare Cath Lab for emergency PCI.<br/>3. Administer ASA 325mg and Nitroglycerin.</p>
+                    </div>
+                 </div>
+                 <button onClick={() => setIsVisionActive(false)} style={{ marginTop: 30, background: '#1a1a2e', color: '#fff', border: 'none', padding: '14px', borderRadius: 16, fontWeight: 800, cursor: 'pointer' }}>CLOSE ANALYSIS</button>
+              </div>
+           </div>
+        </div>
+      )}
+
       <div style={{ position: 'relative', zIndex: 1, marginTop: 80 }}><RuixenBentoCards /></div>
 
       <div style={{ position: 'fixed', bottom: '24px', left: '50%', transform: 'translateX(-50%)', zIndex: 2000 }}>
-        <MacOSDock apps={dockApps} onAppClick={handleDockClick} openApps={callActive ? ['voice'] : []} />
+        <MacOSDock 
+          apps={[
+            { id: 'reports', name: 'Reports', icon: 'https://cdn.jim-nielsen.com/macos/1024/finder-2021-09-10.png?rf=1024' },
+            { id: 'dosage',  name: 'Dosage',  icon: 'https://cdn.jim-nielsen.com/macos/1024/calculator-2021-04-29.png?rf=1024' },
+            { id: 'voice',   name: 'Voice',   icon: voiceIcon },
+            { id: 'ehr',     name: 'EHR',     icon: 'https://cdn.jim-nielsen.com/macos/1024/notes-2021-05-25.png?rf=1024' },
+          ]} 
+          onAppClick={(id) => {
+            if (id === 'voice') { if (!callActive) startCall('en'); else endCall(); }
+            else if (id === 'ehr') alert("EHR Console: Direct integration with Hospital DB active.");
+            else alert(`${id.toUpperCase()} Module: Launching specialized clinical view...`);
+          }} 
+          openApps={callActive ? ['voice'] : []} 
+        />
       </div>
     </div>
   );
