@@ -1,9 +1,7 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
 
-@layer base {
-  body {
-    @apply bg-white text-[#1a1a2e];
-  }
+body {
+  background-color: white;
+  color: #1a1a2e;
+  font-family: 'Inter', sans-serif;
 }
