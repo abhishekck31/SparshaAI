@@ -8,6 +8,14 @@ const PDFDocument = require('pdfkit');
 
 const app  = express();
 const PORT = process.env.PORT || 8080;
+const path = require('path');
+
+// ── Static Assets ────────────────────────────────────────────────────────────
+// Serve the Landing Page at /
+app.use(express.static(path.join(__dirname, 'webui')));
+
+// Serve the React Dashboard at /dashboard
+app.use('/dashboard', express.static(path.join(__dirname, 'frontend/dist')));
 
 // ── Alerts / SSE State ────────────────────────────────────────────────────────
 const activeAlerts = [];
@@ -881,6 +889,11 @@ async function warmupOllama() {
     console.warn('[startup] Ollama warmup failed:', err.message);
   }
 }
+
+// ── SPA Fallback ──────────────────────────────────────────────────────────────
+app.get('/dashboard/*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'frontend/dist/index.html'));
+});
 
 // ── Start ─────────────────────────────────────────────────────────────────────
 app.listen(PORT, async () => {
