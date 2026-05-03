@@ -94,6 +94,11 @@ export default function useVapiVoice() {
     vapi.on('error', (err) => {
       console.error('[VAPI] ERROR:', err);
       const msg = err?.message || JSON.stringify(err);
+      // SILENT SHIELD: Ignore "Ejected" or "Meeting Ended" as they are normal terminations
+      if (msg.includes('EJECTED') || msg.includes('MEETING HAS ENDED')) {
+        setConnecting(false); setCallActive(false);
+        return;
+      }
       setError(msg); setConnecting(false); setCallActive(false);
     });
 

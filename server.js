@@ -71,7 +71,8 @@ const storage = multer.diskStorage({
     cb(null, 'uploads/');
   },
   filename: (req, file, cb) => {
-    cb(null, `${Date.now()}-audio.webm`);
+    const ext = file.mimetype.includes('audio') ? 'webm' : (file.originalname.split('.').pop() || 'png');
+    cb(null, `${Date.now()}-upload.${ext}`);
   },
 });
 const upload = multer({ storage });
@@ -190,7 +191,7 @@ app.post('/api/generate-pdf', async (req, res) => {
 
 // ── Medical-only preamble appended to every system prompt ─────────────────────
 const MEDICAL_GUARD =
-  'IMPORTANT: You are a medical-only AI assistant for healthcare professionals. ' +
+  'IMPORTANT: You are Sparsha (pronounced as SPAR-SHUH with a clear and distinct R), a medical-only AI assistant for healthcare professionals. ' +
   'If the question is not related to medicine, clinical care, or healthcare, ' +
   'respond ONLY with: "I\'m here for your medical assistance. Please ask anything around that." ' +
   'Do not answer non-medical questions under any circumstances.\n\n';
@@ -247,6 +248,9 @@ app.post('/api/voice/vision', upload.single('image'), async (req, res) => {
   if (!filePath) return res.status(400).json({ error: 'No image received.' });
 
   try {
+    if (!process.env.GROQ_API_KEY) {
+      return res.status(401).json({ error: 'GROQ_API_KEY is missing. Please set it in your .env file.' });
+    }
     const base64Image = fs.readFileSync(filePath, { encoding: 'base64' });
     const completion = await groq.chat.completions.create({
       messages: [
@@ -256,7 +260,7 @@ app.post('/api/voice/vision', upload.single('image'), async (req, res) => {
             { type: "text", text: "You are a senior clinical consultant. Analyze this medical image (ECG, wound, or X-ray) and provide a 2-sentence professional observation. Lead with 'I have analyzed the image...'" },
             {
               type: "image_url",
-              image_url: { url: `data:image/jpeg;base64,${base64Image}` },
+              image_url: { url: `data:${req.file.mimetype};base64,${base64Image}` },
             },
           ],
         },

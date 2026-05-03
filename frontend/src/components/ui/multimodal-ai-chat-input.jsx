@@ -88,6 +88,8 @@ export function MultimodalInput({
     { title: 'Generate report', label: 'PDF', action: 'Generate emergency report.' },
   ];
 
+  const fileInputRef = useRef(null);
+
   return (
     <div style={{
       width: '100%',
@@ -178,15 +180,34 @@ export function MultimodalInput({
                <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M3 3H13V13H3V3Z"/></svg>
             </IconButton>
           ) : (
-            <IconButton onClick={submitForm} disabled={!canSend}>
+            <IconButton onClick={submitForm} disabled={!input.trim() && attachments.length === 0}>
                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></svg>
             </IconButton>
           )}
         </div>
 
         <div style={{ position: 'absolute', bottom: '12px', left: '12px' }}>
-          <IconButton variant="ghost" onClick={() => {}}>
-             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.51a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+          <input 
+            type="file" 
+            ref={fileInputRef}
+            style={{ display: 'none' }} 
+            onChange={(e) => {
+              if (e.target.files && e.target.files[0]) {
+                const file = e.target.files[0];
+                console.log("[SPARSHA] File attached:", file.name);
+                setAttachments([file]);
+              }
+            }} 
+          />
+          <IconButton 
+            variant="ghost" 
+            onClick={() => fileInputRef.current?.click()}
+            style={{ backgroundColor: attachments.length > 0 ? C.blueLight : 'transparent', position: 'relative' }}
+          >
+             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={attachments.length > 0 ? C.blue : "currentColor"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.51a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+             {attachments.length > 0 && (
+               <div style={{ position: 'absolute', top: -4, right: -4, width: 14, height: 14, borderRadius: '50%', backgroundColor: C.red, color: '#fff', fontSize: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900 }}>1</div>
+             )}
           </IconButton>
         </div>
       </div>

@@ -150,7 +150,7 @@ export default function VoiceInterface() {
           alerts.forEach(a => {
             if (a.status === 'acknowledged' && !acknowledgedIds.current.has(a.id)) {
               acknowledgedIds.current.add(a.id);
-              say(`The team has responded and is on the way to Room ${a.room_number}.`);
+              say(`The alert for Room ${a.room_number} has been acknowledged. The medical team is on the way.`);
             }
           });
         }
@@ -181,6 +181,11 @@ export default function VoiceInterface() {
       try {
         const res = await fetch('/api/voice/vision', { method: 'POST', body: formData });
         const data = await res.json();
+        
+        if (!res.ok) {
+          throw new Error(data.error || 'Server error during analysis');
+        }
+
         if (data.analysis) {
           setVisionData({
             finding: "Clinical Observation Ready",
@@ -190,7 +195,12 @@ export default function VoiceInterface() {
           say(data.analysis);
         }
       } catch (err) {
-        setVisionData({ finding: 'Analysis Error', analysis: 'Could not reach vision engine.', recommendation: 'Verify connection.' });
+        console.error("[SPARSHA] Vision error:", err);
+        setVisionData({ 
+          finding: 'Analysis Error', 
+          analysis: err.message || 'Could not reach vision engine.', 
+          recommendation: 'Check server logs or GROQ_API_KEY.' 
+        });
       }
     }
   };
@@ -314,8 +324,13 @@ export default function VoiceInterface() {
               messages={messages.map(m => ({ role: m.role, content: m.text }))}
               isGenerating={aiSpeaking || thinking}
               onSendMessage={({ input, attachments }) => {
-                if (attachments?.length > 0) handleVisionUpload(attachments);
-                else injectMessage(input);
+                if (attachments?.length > 0) {
+                  // Extract the raw file from the attachment object
+                  const file = attachments[0].file || attachments[0];
+                  handleVisionUpload([file]);
+                } else {
+                  injectMessage(input);
+                }
               }}
               onStopGenerating={endCall}
               canSend={callActive}
