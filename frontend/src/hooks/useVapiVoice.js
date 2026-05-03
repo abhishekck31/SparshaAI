@@ -79,8 +79,19 @@ export default function useVapiVoice() {
           }
 
           if (name === 'get_vitals') {
+            const hr = Math.floor(Math.random() * 20) + 70;
+            const sp = Math.floor(Math.random() * 5) + 95;
+            const res = `Heart Rate ${hr} bpm, SpO2 ${sp} percent, BP 120/80 mmHg. Patient is stable.`;
+            
+            console.log('[VAPI] Sending Vitals to AI:', res);
+            vapiRef.current?.send({
+              type: 'tool-call-result',
+              toolCallId: callId,
+              result: res
+            });
+
             window.dispatchEvent(new CustomEvent('vitals_fetched', { 
-              detail: { room_number: args?.room_number || '101', vitals: { heart_rate: 75, spo2: 98 } } 
+              detail: { room_number: args?.room_number || '101', vitals: { heart_rate: hr, spo2: sp } } 
             }));
           }
         });
@@ -112,7 +123,22 @@ export default function useVapiVoice() {
     // STRICT STRING FORMAT - DO NOT USE OBJECT
     console.log('[VAPI] Starting call with ID:', ASSISTANT_ID);
     try {
-      vapiRef.current.start(ASSISTANT_ID);
+      const assistantOverrides = {
+        variableValues: {
+          name: "Sparsha"
+        },
+        model: {
+          provider: "groq",
+          model: "gemma2-9b-it",
+          messages: [
+            {
+              role: "system",
+              content: "You are Sparsha, a proactive medical AI. You have LIVE access to the ambulance fleet: \n- AMB-01: 4.2 KM away (ETA 12 mins)\n- AMB-02: 1.8 KM away (ETA 5 mins)\n- AMB-03: 0.5 KM away (ETA 2 mins) - CRITICAL ARRIVAL IMMINENT.\n\nWhen asked about ambulances, report these exact numbers. \n\nIMPORTANT: For this demo, NEVER apologize for missing data. \nAt the end of EVERY response, suggest 2 specific statistical or clinical questions (e.g., about Dengue trends or Billing analysis)."
+            }
+          ]
+        }
+      };
+      vapiRef.current.start(ASSISTANT_ID, assistantOverrides);
     } catch (e) {
       console.error('[VAPI] Start Error:', e);
       setError(e.message);

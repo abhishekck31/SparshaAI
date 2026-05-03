@@ -1,7 +1,6 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import useWakeWord  from '../hooks/useWakeWord';
 import useVapiVoice from '../hooks/useVapiVoice';
-import MacOSDock    from './ui/mac-os-dock';
 import voiceIcon    from '../assets/voice-icon.png';
 import RuixenBentoCards from './ui/ruixen-bento-cards';
 import { MultimodalInput } from './ui/multimodal-ai-chat-input';
@@ -101,6 +100,39 @@ export default function VoiceInterface() {
     }
   });
 
+  const [fleet, setFleet] = useState([
+    { id: 'AMB-01', distance: 4.2, eta: 12, status: 'transit' },
+    { id: 'AMB-02', distance: 1.8, eta: 5, status: 'transit' },
+    { id: 'AMB-03', distance: 0.5, eta: 2, status: 'transit' }
+  ]);
+
+  const speak = (text) => {
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate = 0.95;
+    utterance.pitch = 1.05;
+    window.speechSynthesis.speak(utterance);
+  };
+
+  const handleInformDesk = async (id) => {
+    setFleet(prev => prev.map(a => a.id === id ? { ...a, status: 'reception_arranged' } : a));
+    speak(`Ambulance reception arranged for ${id}, ward also has been assigned with all vital tracking devices.`);
+    
+    try {
+      await fetch('/api/alerts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: `AMB-IN-${Date.now()}`,
+          room_number: 'ENTRANCE',
+          situation: `AMBULANCE INCOMING: ${id}`,
+          reason: 'Reception Arranged. Medical ward and vital monitors assigned.',
+          status: 'pending',
+          is_simulated: true
+        })
+      });
+    } catch (err) { console.error('[FLEET] Alert broadcast failed:', err); }
+  };
+
   const [isVisionActive, setIsVisionActive] = useState(false);
   const [visionImage, setVisionImage] = useState(null);
   const [showAllPatients, setShowAllPatients] = useState(false);
@@ -113,6 +145,29 @@ export default function VoiceInterface() {
     { id: 4, ptId: 'PT-1122D', room: '206', hr: 78, spo2: 99, rr: 14, temp: 36.5, risk: 4 },
     { id: 5, ptId: 'PT-3344E', room: '301', hr: 92, spo2: 97, rr: 20, temp: 37.8, risk: 22 },
   ]);
+
+  // ── AUTO-PROXIMITY ALERTS ────────────────────────────────────────────────
+  const alertedRefs = useRef(new Set());
+  useEffect(() => {
+    fleet.forEach(amb => {
+      if (amb.distance <= 0.5 && !alertedRefs.current.has(amb.id)) {
+        alertedRefs.current.add(amb.id);
+        console.log(`[PROXIMITY] ${amb.id} at ${amb.distance}km. Sending auto-alert...`);
+        fetch('/api/alerts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: `AUTO-${amb.id}-${Date.now()}`,
+            room_number: 'ENTRANCE',
+            situation: `🚨 CRITICAL ARRIVAL: ${amb.id}`,
+            reason: `Ambulance is less than 500m away. ETA: ${amb.eta} mins. Prepare ER team.`,
+            status: 'pending',
+            is_simulated: true
+          })
+        }).catch(err => console.error('[PROXIMITY] Auto-alert failed:', err));
+      }
+    });
+  }, [fleet]);
 
   const [staff] = useState([
     { id: 1, name: 'Dr. Sarah Wilson', role: 'Chief Cardiac Surgeon', status: 'Available' },
@@ -387,22 +442,64 @@ export default function VoiceInterface() {
 
       <div style={{ position: 'relative', zIndex: 1, marginTop: 80 }}><RuixenBentoCards /></div>
 
-      <div style={{ position: 'fixed', bottom: '24px', left: '50%', transform: 'translateX(-50%)', zIndex: 2000 }}>
-        <MacOSDock 
-          apps={[
-            { id: 'reports', name: 'Reports', icon: 'https://cdn.jim-nielsen.com/macos/1024/finder-2021-09-10.png?rf=1024' },
-            { id: 'dosage',  name: 'Dosage',  icon: 'https://cdn.jim-nielsen.com/macos/1024/calculator-2021-04-29.png?rf=1024' },
-            { id: 'voice',   name: 'Voice',   icon: voiceIcon },
-            { id: 'ehr',     name: 'EHR',     icon: 'https://cdn.jim-nielsen.com/macos/1024/notes-2021-05-25.png?rf=1024' },
-          ]} 
-          onAppClick={(id) => {
-            if (id === 'voice') { if (!callActive) startCall('en'); else endCall(); }
-            else if (id === 'ehr') alert("EHR Console: Direct integration with Hospital DB active.");
-            else alert(`${id.toUpperCase()} Module: Launching specialized clinical view...`);
-          }} 
-          openApps={callActive ? ['voice'] : []} 
-        />
+      {/* VOICE AI CONTROL (Bottom Right) */}
+      <div style={{ position: 'fixed', bottom: '32px', right: '32px', zIndex: 2000 }}>
+        <button 
+          onClick={callActive ? endCall : () => startCall('en')}
+          style={{
+            background: callActive ? C.red : C.blue,
+            color: '#fff',
+            border: 'none',
+            padding: '16px 32px',
+            borderRadius: '100px',
+            fontWeight: 800,
+            fontSize: 14,
+            cursor: 'pointer',
+            boxShadow: '0 20px 40px rgba(0,0,0,0.2)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+            transform: callActive ? 'scale(1.05)' : 'scale(1)'
+          }}
+        >
+          <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#fff', animation: callActive ? 'softPulse 1.5s infinite' : 'none' }} />
+          {callActive ? 'END VOICE SESSION' : 'ACTIVATE VOICE AI'}
+        </button>
       </div>
+
+      {/* AMBULANCE FLEET HUD (Bottom Left) */}
+      <div style={{ position: 'fixed', bottom: 32, left: 32, zIndex: 100, display: 'flex', flexDirection: 'column', gap: 16, width: 340 }}>
+        <div style={{ background: '#1e293b', color: '#fff', padding: '16px 20px', borderRadius: '16px', boxShadow: '0 20px 40px rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)' }}>
+          <div style={{ fontSize: 10, fontWeight: 900, letterSpacing: '0.1em', opacity: 0.6, marginBottom: 12, textTransform: 'uppercase' }}>📡 LIVE FLEET TELEMETRY</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {fleet.map(amb => (
+              <div key={amb.id} style={{ background: 'rgba(255,255,255,0.05)', padding: 12, borderRadius: 12, border: '1px solid rgba(255,255,255,0.1)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                  <div style={{ fontSize: 14, fontWeight: 800, color: '#3b82f6' }}>🚚 {amb.id}</div>
+                  <div style={{ fontSize: 11, fontWeight: 800, color: amb.distance <= 1.0 ? '#ef4444' : '#10b981' }}>
+                    {amb.distance.toFixed(1)} KM
+                  </div>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ fontSize: 10, fontWeight: 600, opacity: 0.7 }}>ETA: {amb.eta} MIN</div>
+                  {amb.status === 'transit' ? (
+                    <button 
+                      onClick={() => handleInformDesk(amb.id)}
+                      style={{ background: '#3b82f6', color: '#fff', border: 'none', padding: '4px 10px', borderRadius: '6px', fontSize: 9, fontWeight: 800, cursor: 'pointer' }}
+                    >
+                      INFORM DESK
+                    </button>
+                  ) : (
+                    <div style={{ fontSize: 9, fontWeight: 800, color: '#10b981' }}>✅ ARRANGED</div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
     </div>
   );
 }

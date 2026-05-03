@@ -26,8 +26,8 @@ const cardContents = [
     gridSpan: "span 4"
   },  
   {
-    title: "Night-Shift Mode",
-    description: "Every clinical component is thoughtfully designed to work seamlessly in high-contrast dark modes for low-light ward environments.",
+    title: "Mobile-Ready Dashboard",
+    description: "The Sparsha platform is fully responsive, ensuring clinicians have 24/7 access to critical vitals and alerts across all mobile and tablet devices.",
     gridSpan: "span 2"
   }
 ];
@@ -58,7 +58,7 @@ const CornerPlus = () => (
 
 const BentoCard = ({ title, description, gridSpan }) => {
   return (
-    <div style={{
+    <div className="bento-card" style={{
       gridColumn: gridSpan,
       position: 'relative',
       padding: '32px',
@@ -106,9 +106,21 @@ export default function RuixenBentoCards() {
       borderTop: `1px solid ${C.border}`,
       marginTop: '40px'
     }}>
+      <style>{`
+        @media (max-width: 768px) {
+          .bento-grid {
+            grid-template-columns: 1fr !important;
+            gap: 16px !important;
+          }
+          .bento-card {
+            grid-column: span 1 !important;
+          }
+        }
+      `}</style>
+
       <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
         {/* Responsive Grid - Using CSS Grid via Style */}
-        <div style={{ 
+        <div className="bento-grid" style={{ 
           display: 'grid', 
           gridTemplateColumns: 'repeat(6, 1fr)', 
           gap: '24px',

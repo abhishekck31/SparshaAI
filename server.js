@@ -903,12 +903,12 @@ async function warmupOllama() {
 }
 
 // ── SPA Fallback ──────────────────────────────────────────────────────────────
-app.get('/dashboard/*', (req, res) => {
+app.get(['/dashboard', '/dashboard/*'], (req, res) => {
   res.sendFile(path.join(__dirname, 'frontend/dist/index.html'));
 });
 
 // ── Start ─────────────────────────────────────────────────────────────────────
-app.listen(PORT, async () => {
+app.listen(PORT, '0.0.0.0', async () => {
   console.log(`\n🏥  Sparsha AI listening on http://localhost:${PORT}`);
   console.log(`    GROQ_API_KEY : ${process.env.GROQ_API_KEY ? '✓ set' : '✗ MISSING'}`);
   console.log(`    VAPI webhook : POST /api/vapi/webhook\n`);
